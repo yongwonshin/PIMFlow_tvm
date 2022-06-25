@@ -8,9 +8,13 @@
 #include <fstream>
 #include <numeric>
 #include <sstream>
+#include <vector>
+#include <algorithm>
+#include <stdexcept>
 
 #include "../../utils.h"
 #include "../codegen_c/codegen_c.h"
+#include "pim_trace.h"
 
 namespace tvm {
 namespace relay {
@@ -60,59 +64,59 @@ Str2StrMap ConvArgs(const CallNode* call, Act act) {
   return args;
 }
 
-inline void PimPrint(std::ostringstream& os, const std::string& stmt, int indent = 2) {
+inline void CuDNNPrint(std::ostringstream& os, const std::string& stmt, int indent = 2) {
   for (int i = 0; i < indent; ++i) {
     os << " ";
   }
   os << stmt;
 }
 
-std::string ConvOp(std::string id, const Str2StrMap& attrs,
+inline std::string CuDNNCodeGen(std::string id, const Str2StrMap& attrs,
                     const std::vector<std::string>& func_args) {
   std::ostringstream conv_decl;
 
   // setup
-  PimPrint(conv_decl, "cudnnHandle_t cudnn;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreate(&cudnn));\n");
+  CuDNNPrint(conv_decl, "cudnnHandle_t cudnn;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreate(&cudnn));\n");
 
   // input
-  // PimPrint(conv_decl, "size_t input_bytes = " +  attrs.at("N") + " * " +  attrs.at("C") + " * " +  attrs.at("H") + " * " +  attrs.at("W") + " * " + "sizeof(d_type);\n");
-  // // PimPrint(conv_decl, "d_type *c_input = (d_type*)malloc(input_bytes);\n");
-  // PimPrint(conv_decl, "d_type *d_input{nullptr};\n");
-  // PimPrint(conv_decl, "cudaMalloc(&d_input, input_bytes);\n");
-  // PimPrint(conv_decl, "cudaMemcpy(d_input, " + func_args[0] + ", input_bytes, cudaMemcpyHostToDevice);\n");
-  // PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  // CuDNNPrint(conv_decl, "size_t input_bytes = " +  attrs.at("N") + " * " +  attrs.at("C") + " * " +  attrs.at("H") + " * " +  attrs.at("W") + " * " + "sizeof(d_type);\n");
+  // // CuDNNPrint(conv_decl, "d_type *c_input = (d_type*)malloc(input_bytes);\n");
+  // CuDNNPrint(conv_decl, "d_type *d_input{nullptr};\n");
+  // CuDNNPrint(conv_decl, "cudaMalloc(&d_input, input_bytes);\n");
+  // CuDNNPrint(conv_decl, "cudaMemcpy(d_input, " + func_args[0] + ", input_bytes, cudaMemcpyHostToDevice);\n");
+  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
 
   // kernel
-  // PimPrint(conv_decl, "size_t kernel_bytes = " + attrs.at("K") + " * " + attrs.at("C") + " * " + attrs.at("R") + " * " + attrs.at("S") + " * sizeof(d_type);\n");
-  // // PimPrint(conv_decl, "d_type *c_kernel = (d_type*)malloc(kernel_bytes);\n");
-  // PimPrint(conv_decl, "d_type *d_kernel{nullptr};\n");
-  // PimPrint(conv_decl, "cudaMalloc(&d_kernel, kernel_bytes);\n");
-  // PimPrint(conv_decl, "cudaMemcpy(d_kernel, " + func_args[1] + ", kernel_bytes, cudaMemcpyHostToDevice);\n");
-  // PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  // CuDNNPrint(conv_decl, "size_t kernel_bytes = " + attrs.at("K") + " * " + attrs.at("C") + " * " + attrs.at("R") + " * " + attrs.at("S") + " * sizeof(d_type);\n");
+  // // CuDNNPrint(conv_decl, "d_type *c_kernel = (d_type*)malloc(kernel_bytes);\n");
+  // CuDNNPrint(conv_decl, "d_type *d_kernel{nullptr};\n");
+  // CuDNNPrint(conv_decl, "cudaMalloc(&d_kernel, kernel_bytes);\n");
+  // CuDNNPrint(conv_decl, "cudaMemcpy(d_kernel, " + func_args[1] + ", kernel_bytes, cudaMemcpyHostToDevice);\n");
+  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
 
   // bias
   // if (func_args.size() > 2) {
-  //   PimPrint(conv_decl, "size_t bias_bytes = " + attrs.at("K") + " * sizeof(d_type);\n");
-  //   // PimPrint(conv_decl, "d_type *c_bias = (d_type*)malloc(kernel_bytes);\n");
-  //   PimPrint(conv_decl, "d_type *d_bias{nullptr};\n");
-  //   PimPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
-  //   PimPrint(conv_decl, "cudaMemcpy(d_bias, " + func_args[2] + ", bias_bytes, cudaMemcpyHostToDevice);\n");
-  //   PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  //   CuDNNPrint(conv_decl, "size_t bias_bytes = " + attrs.at("K") + " * sizeof(d_type);\n");
+  //   // CuDNNPrint(conv_decl, "d_type *c_bias = (d_type*)malloc(kernel_bytes);\n");
+  //   CuDNNPrint(conv_decl, "d_type *d_bias{nullptr};\n");
+  //   CuDNNPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
+  //   CuDNNPrint(conv_decl, "cudaMemcpy(d_bias, " + func_args[2] + ", bias_bytes, cudaMemcpyHostToDevice);\n");
+  //   CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
   // } else if (std::stoi(attrs.at("Act")) != ACT_NONE) {
-  //   PimPrint(conv_decl, "size_t bias_size = " + attrs.at("C") + ";\n");
-  //   PimPrint(conv_decl, "size_t bias_bytes = bias_size * sizeof(d_type);\n");
-  //   PimPrint(conv_decl, "d_type *c_bias = (d_type*)calloc(bias_size, sizeof(d_type));\n");
-  //   PimPrint(conv_decl, "d_type *d_bias{nullptr};\n");
-  //   PimPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
-  //   PimPrint(conv_decl, "cudaMemcpy(d_bias, c_bias, bias_bytes, cudaMemcpyHostToDevice);\n");
-  //   PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  //   CuDNNPrint(conv_decl, "size_t bias_size = " + attrs.at("C") + ";\n");
+  //   CuDNNPrint(conv_decl, "size_t bias_bytes = bias_size * sizeof(d_type);\n");
+  //   CuDNNPrint(conv_decl, "d_type *c_bias = (d_type*)calloc(bias_size, sizeof(d_type));\n");
+  //   CuDNNPrint(conv_decl, "d_type *d_bias{nullptr};\n");
+  //   CuDNNPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
+  //   CuDNNPrint(conv_decl, "cudaMemcpy(d_bias, c_bias, bias_bytes, cudaMemcpyHostToDevice);\n");
+  //   CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
   // }
 
   // descriptor
-  PimPrint(conv_decl, "cudnnTensorDescriptor_t input_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t input_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,\n"
                         "/*format=*/CUDNN_TENSOR_NHWC,\n"
                         "/*dataType=*/DATA_TYPE,\n"
                         "/*batch_size=*/" + attrs.at("N") + ",\n"
@@ -120,9 +124,9 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                         "/*height=*/" + attrs.at("H") + ",\n"
                         "/*width=*/" + attrs.at("W") + "));\n");
 
-  PimPrint(conv_decl, "cudnnFilterDescriptor_t kernel_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnFilterDescriptor_t kernel_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,\n"
                         "/*dataType=*/DATA_TYPE,\n"
                         "/*format=*/CUDNN_TENSOR_NHWC,\n"
                         "/*out_channels=*/" + attrs.at("K") + ",\n"
@@ -130,9 +134,9 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                         "/*kernel_height=*/" + attrs.at("R") + ",\n"
                         "/*kernel_width=*/" + attrs.at("S") + "));\n");
 
-  PimPrint(conv_decl, "cudnnConvolutionDescriptor_t convolution_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnConvolutionDescriptor_t convolution_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,\n"
                         "/*pad_height=*/" + attrs.at("Ph") + ",\n"
                         "/*pad_width=*/" + attrs.at("Pw") + ",\n"
                         "/*vertical_stride=*/" + attrs.at("Sh") + ",\n"
@@ -142,9 +146,9 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                         "/*mode=*/CUDNN_CROSS_CORRELATION,\n"
                         "/*conputeType=*/DATA_TYPE));\n");
 
-  PimPrint(conv_decl, "cudnnTensorDescriptor_t bias_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&bias_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(bias_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t bias_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&bias_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(bias_descriptor,\n"
                         "/*format=*/CUDNN_TENSOR_NHWC,\n"
                         "/*dataType=*/DATA_TYPE,\n"
                         "/*batch_size=*/1,\n"
@@ -152,40 +156,40 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                         "/*height=*/1,\n"
                         "/*width=*/1));\n");
 
-  PimPrint(conv_decl, "cudnnActivationDescriptor_t activation_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateActivationDescriptor(&activation_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnActivationDescriptor_t activation_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateActivationDescriptor(&activation_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
                         "CUDNN_ACTIVATION_IDENTITY,\n"
                         "CUDNN_NOT_PROPAGATE_NAN,\n"
                         "0));\n");
   if (std::stoi(attrs.at("Act")) == ACT_RELU) {
-    PimPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
+    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
                           "CUDNN_ACTIVATION_RELU,\n"
                           "CUDNN_NOT_PROPAGATE_NAN,\n"
                           "0));\n");
   } else if (std::stoi(attrs.at("Act")) == ACT_SWISH) {
-    PimPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
+    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
                           "CUDNN_ACTIVATION_SWISH,\n"
                           "CUDNN_NOT_PROPAGATE_NAN,\n"
                           "0));\n");
-    PimPrint(conv_decl, "cudnnSetActivationDescriptorSwishBeta(activation_descriptor, 1);\n");
+    CuDNNPrint(conv_decl, "cudnnSetActivationDescriptorSwishBeta(activation_descriptor, 1);\n");
   }
   if (std::stoi(attrs.at("G")) > 1)
-    PimPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionGroupCount(convolution_descriptor,"
+    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionGroupCount(convolution_descriptor,"
                           + attrs.at("G") + "));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionMathType(convolution_descriptor, CUDNN_TENSOR_OP_MATH));\n");
-  PimPrint(conv_decl, "int OUTPUT_BATCH_SIZE = 0, OUTPUT_CHANNELS = 0, OUTPUT_HEIGHT = 0, OUTPUT_WIDTH = 0;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnGetConvolution2dForwardOutputDim(\n"
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionMathType(convolution_descriptor, CUDNN_TENSOR_OP_MATH));\n");
+  CuDNNPrint(conv_decl, "int OUTPUT_BATCH_SIZE = 0, OUTPUT_CHANNELS = 0, OUTPUT_HEIGHT = 0, OUTPUT_WIDTH = 0;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnGetConvolution2dForwardOutputDim(\n"
                         "convolution_descriptor, input_descriptor, kernel_descriptor,\n"
                         "&OUTPUT_BATCH_SIZE, &OUTPUT_CHANNELS, &OUTPUT_HEIGHT, &OUTPUT_WIDTH));\n");
 
-  // PimPrint(conv_decl, "size_t output_bytes = OUTPUT_BATCH_SIZE * OUTPUT_CHANNELS * OUTPUT_HEIGHT * OUTPUT_WIDTH * sizeof(d_type);\n");
-  // PimPrint(conv_decl, "d_type *d_output{nullptr};\n");
-  // PimPrint(conv_decl, "cudaMalloc(&d_output, output_bytes);\n");
+  // CuDNNPrint(conv_decl, "size_t output_bytes = OUTPUT_BATCH_SIZE * OUTPUT_CHANNELS * OUTPUT_HEIGHT * OUTPUT_WIDTH * sizeof(d_type);\n");
+  // CuDNNPrint(conv_decl, "d_type *d_output{nullptr};\n");
+  // CuDNNPrint(conv_decl, "cudaMalloc(&d_output, output_bytes);\n");
 
-  PimPrint(conv_decl, "cudnnTensorDescriptor_t output_descriptor;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,\n"
+  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t output_descriptor;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,\n"
                         "/*format=*/CUDNN_TENSOR_NHWC,\n"
                         "/*dataType=*/DATA_TYPE,\n"
                         "/*batch_size=*/OUTPUT_BATCH_SIZE,\n"
@@ -193,9 +197,9 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                         "/*height=*/OUTPUT_HEIGHT,\n"
                         "/*width=*/OUTPUT_WIDTH));\n");
 
-  PimPrint(conv_decl, "cudnnConvolutionFwdAlgoPerf_t perf;\n");
-  PimPrint(conv_decl, "int algo_count = 1;\n");
-  PimPrint(conv_decl, "checkCUDNN(cudnnGetConvolutionForwardAlgorithm_v7(\n"
+  CuDNNPrint(conv_decl, "cudnnConvolutionFwdAlgoPerf_t perf;\n");
+  CuDNNPrint(conv_decl, "int algo_count = 1;\n");
+  CuDNNPrint(conv_decl, "checkCUDNN(cudnnGetConvolutionForwardAlgorithm_v7(\n"
                       "cudnn,\n"
                       "input_descriptor,\n"
                       "kernel_descriptor,\n"
@@ -205,40 +209,322 @@ std::string ConvOp(std::string id, const Str2StrMap& attrs,
                       "&algo_count,  // returnedAlgoCount\n"
                       "&perf));\n");
 
-  PimPrint(conv_decl, "size_t workspace_bytes = 0;\n");
-  PimPrint(conv_decl, "cudnnGetConvolutionForwardWorkspaceSize(\n"
+  CuDNNPrint(conv_decl, "size_t workspace_bytes = 0;\n");
+  CuDNNPrint(conv_decl, "cudnnGetConvolutionForwardWorkspaceSize(\n"
                         "cudnn, input_descriptor, kernel_descriptor, convolution_descriptor,\n"
                         "output_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, &workspace_bytes);\n");
-  PimPrint(conv_decl, "void *d_workspace{nullptr};\n"
+  CuDNNPrint(conv_decl, "void *d_workspace{nullptr};\n"
                       "if (workspace_bytes > 0)\n"
                       "  cudaMalloc(&d_workspace, workspace_bytes);\n");
 
-  PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  PimPrint(conv_decl, "const float alpha = 1, beta = 0;\n");
-  // PimPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, " + func_args[0] +
+  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  CuDNNPrint(conv_decl, "const float alpha = 1, beta = 0;\n");
+  // CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, " + func_args[0] +
   // ", kernel_descriptor, " + func_args[1] + ", convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, out0);\n");
   if (func_args.size() == 2 && std::stoi(attrs.at("Act")) == ACT_NONE) {
-    // PimPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output);\n");
-    PimPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0);\n");
+    // CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output);\n");
+    CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0);\n");
   } else {
-    // PimPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output, bias_descriptor, d_bias, activation_descriptor, output_descriptor, d_output);\n");
-    PimPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0, bias_descriptor," + func_args[2] + ", activation_descriptor, output_descriptor, out0);\n");
+    // CuDNNPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output, bias_descriptor, d_bias, activation_descriptor, output_descriptor, d_output);\n");
+    CuDNNPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0, bias_descriptor," + func_args[2] + ", activation_descriptor, output_descriptor, out0);\n");
   }
-  PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  // PimPrint(conv_decl, "cudaMemcpy(out0, d_output, output_bytes, cudaMemcpyDeviceToHost);\n");
-  // PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  // CuDNNPrint(conv_decl, "cudaMemcpy(out0, d_output, output_bytes, cudaMemcpyDeviceToHost);\n");
+  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
 
-  PimPrint(conv_decl, "cudaFree(d_workspace);\n");
-  // PimPrint(conv_decl, "cudaFree(d_input);\n");
-  // PimPrint(conv_decl, "cudaFree(d_kernel);\n");
-  // PimPrint(conv_decl, "cudaFree(d_output);\n");
-  PimPrint(conv_decl, "cudnnDestroyTensorDescriptor(input_descriptor);\n");
-  PimPrint(conv_decl, "cudnnDestroyTensorDescriptor(output_descriptor);\n");
-  PimPrint(conv_decl, "cudnnDestroyFilterDescriptor(kernel_descriptor);\n");
-  PimPrint(conv_decl, "cudnnDestroyConvolutionDescriptor(convolution_descriptor);\n");
-  PimPrint(conv_decl, "cudnnDestroy(cudnn);\n");
-  PimPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
+  CuDNNPrint(conv_decl, "cudaFree(d_workspace);\n");
+  // CuDNNPrint(conv_decl, "cudaFree(d_input);\n");
+  // CuDNNPrint(conv_decl, "cudaFree(d_kernel);\n");
+  // CuDNNPrint(conv_decl, "cudaFree(d_output);\n");
+  CuDNNPrint(conv_decl, "cudnnDestroyTensorDescriptor(input_descriptor);\n");
+  CuDNNPrint(conv_decl, "cudnnDestroyTensorDescriptor(output_descriptor);\n");
+  CuDNNPrint(conv_decl, "cudnnDestroyFilterDescriptor(kernel_descriptor);\n");
+  CuDNNPrint(conv_decl, "cudnnDestroyConvolutionDescriptor(convolution_descriptor);\n");
+  CuDNNPrint(conv_decl, "cudnnDestroy(cudnn);\n");
+  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
   return conv_decl.str();
+}
+
+std::string PimCodeGen(std::string id, const Str2StrMap& attrs,
+                const std::vector<std::string>& func_args) {
+  std::ostringstream OS;
+
+  int C_o = std::stoi(attrs.at("K"));
+  int C_i = std::stoi(attrs.at("C"));
+  int H = std::stoi(attrs.at("H"));
+  int W = std::stoi(attrs.at("W"));
+
+  auto i_c = ((C_i + 15) / 16) * 16;
+  auto o_c = C_o;
+  auto row = o_c;
+  int fl, stride, n, col;
+
+  if (i_c <= 512) {
+    fl = 512 / i_c;
+    col = i_c * fl;
+    stride = i_c;
+    n = ((H * W) + fl - 1) / fl;
+    for (int i = 0; i < n; i++) {
+      if (i == n - 1) {
+        col = ((H * W) - (i * fl)) * i_c;
+      }
+      pim::OutputNewtonTraceV2(OS, id, row, col, stride);
+    }
+  } else {
+    int full = i_c / 512;
+    col = 512;
+    stride = 512;
+    n = (H * W);
+    for (int j = 0; j < full; j++) {
+      for (int i = 0; i < n; i++) {
+        pim::OutputNewtonTraceV2(OS, id, row, col, stride);
+      }
+    }
+    int i_c_remain = i_c - (512 * full);
+    if (i_c_remain > 0) {
+      fl = 512 / i_c_remain;
+      col = fl * i_c_remain;
+      stride = i_c_remain;
+      n = (((H * W) + fl - 1) / fl);
+      for (int i = 0; i < n; i++) {
+        if (i == n - 1) {
+          col = ((H * W) - (i * fl)) * i_c_remain;
+        }
+        pim::OutputNewtonTraceV2(OS, id, row, col, stride);
+      }
+    }
+  }
+  return OS.str();
+}
+
+class Readres {
+  std::vector<std::string> head;
+
+public:
+  Readres(std::vector<std::string> cmds) {
+    head = cmds;
+  }
+
+  std::string code() const {
+    std::string code;
+    for (auto h : head) {
+      code += h + "\n";
+    }
+    return code;
+  }
+};
+
+class GAct {
+  std::vector<std::string> head;
+  std::vector<Readres> readres;
+  std::vector<std::string> buffer;
+
+public:
+  GAct(std::string cmd) {
+    head.push_back(cmd);
+  }
+  void add(std::string cmd) {
+    if (cmd.find("G_ACT") != std::string::npos) {
+      head.push_back(cmd);
+    } else {
+      buffer.push_back(cmd);
+      if (cmd.find("READRES") != std::string::npos) {
+        readres.push_back(Readres(buffer));
+        buffer.clear();
+      }
+    }
+  }
+
+  int n_readres() const {
+    return readres.size();
+  }
+
+  std::string h() const {
+    std::string code;
+    for (auto& h : head) {
+      code += h + "\n";
+    }
+    return code;
+  }
+
+  std::string code(bool include_head) const {
+    std::string code;
+    if (include_head) {
+      for (auto h : head) {
+        code += h + "\n";
+      }
+    }
+    for (auto& r : readres) {
+      code += r.code();
+    }
+    return code;
+  }
+};
+
+class GWrite {
+  std::string head;
+  std::vector<GAct> gacts;
+
+public:
+  GWrite(std::string cmd) : head(cmd) { }
+
+  void add(std::string cmd) {
+    if (cmd.find("G_ACT0") != std::string::npos) {
+      gacts.push_back(GAct(cmd));
+    } else {
+      auto& gact = gacts.back();
+      gact.add(cmd);
+    }
+  }
+
+  int n_gact() const {
+    return gacts.size();
+  }
+
+  int n_readres() const {
+    int n = 0;
+    for (auto& gact : gacts) {
+      n += gact.n_readres();
+    }
+    return n;
+  }
+
+  GAct& at(int i) {
+    return gacts[i];
+  }
+
+  std::string h() const {
+    return head + "\n";
+  }
+
+  std::string code(bool include_head) const {
+    std::string code;
+    if (include_head) {
+      code += head + "\n";
+    }
+    for (auto& gact : gacts) {
+      code += gact.code(true);
+    }
+    return code;
+  }
+};
+
+class Command {
+  std::vector<GWrite> gwrites;
+  int n_channel;
+
+public:
+  Command(int n_channel) : n_channel(n_channel) { }
+
+  void add(std::string cmd) {
+    if (cmd.find("GWRITE") != std::string::npos) {
+      gwrites.push_back(GWrite(cmd));
+    } else {
+      auto& gwrite = gwrites.back();
+      gwrite.add(cmd);
+    }
+  }
+  void policy_basic(GWrite& gwrite, std::vector<std::string>& code) {
+    // write GWRITE for every channels
+    for (int i = 0; i < std::min(n_channel, gwrite.n_gact()); i++) {
+      code[i] += gwrite.h();
+    }
+    // distrubute G_ACT
+    for (int i = 0; i < gwrite.n_gact(); i++) {
+      code[i % n_channel] += gwrite.at(i).code(true);
+    }
+  }
+  std::vector<std::string> policy_basic() {
+    std::vector<std::string> code(n_channel);
+
+    for (auto& gwrite : gwrites) {
+      policy_basic(gwrite, code);
+    }
+
+    return code;
+  }
+  std::vector<std::string> policy_readres() {
+    std::vector<std::string> code(n_channel);
+
+    for (auto& gwrite : gwrites) {
+      // check for enough parallelism
+      if (gwrite.n_gact() <= n_channel / 2 && gwrite.n_readres() > n_channel / 2) {
+        // write GWRITE for every channels
+        for (int i = 0; i < std::min(n_channel, gwrite.n_readres()); i++) {
+          code[i] += gwrite.h();
+        }
+
+        // distribute commands
+        for (int i = 0; i < gwrite.n_gact(); i++) {
+          GAct& gact = gwrite.at(i);
+          // write G_ACT for every channels
+          for (int j = 0; j < std::min(n_channel, gact.n_readres()); j++) {
+            code[i] += gact.h();
+          }
+          // distribute readres
+          for (int j = 0; j < gact.n_readres(); j++) {
+            code[i % n_channel] += gact.code(false);
+          }
+        }
+      } else { // or fallback to basic policy
+        policy_basic(gwrite, code);
+      }
+    }
+
+    return code;
+  }
+  std::vector<std::string> policy_gwrite() {
+    // TODO
+    return std::vector<std::string>{};
+  }
+};
+
+void PimSchedule(std::string id, const Str2StrMap& attrs,
+                 const std::vector<std::string>& func_args, std::string code) {
+  int n_channel = 12;
+
+  std::vector<std::string> traces;
+  std::string token;
+  std::stringstream ss(code);
+
+  Command command(n_channel);
+
+  int idx = 0;
+  while (std::getline(ss, token, '\n')) {
+    traces.push_back(token);
+    command.add(token);
+    idx++;
+  }
+
+  std::ofstream OS;
+
+  // basic
+  auto cmds = command.policy_basic();
+  for (int i = 0; i < n_channel; i++) {
+    OS.open(id + "-" + std::to_string(i));
+    OS << cmds[i];
+    OS.flush();
+    OS.close();
+  }
+
+  // TODO: policy 1
+
+  // TODO: policy 2
+
+  OS.open(id + "-all");
+  for (auto trace : traces) {
+    OS << trace << "\n";
+  }
+  OS.flush();
+  OS.close();
+}
+
+std::string ConvOp(std::string id, const Str2StrMap& attrs,
+                    const std::vector<std::string>& func_args) {
+  std::string code = CuDNNCodeGen(id, attrs, func_args);
+  std::string pim_trace = PimCodeGen(id, attrs, func_args);
+  PimSchedule(id, attrs, func_args, pim_trace);
+  return code;
 }
 
 class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public CodegenCBase {

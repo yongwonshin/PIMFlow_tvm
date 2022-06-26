@@ -656,6 +656,18 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 3, std::vector<std::string>{"nn.conv2d", "add", "multiply", "cos"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_SWISH));
+    } else if (pattern_name == "pim.memory_optimized_slice") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"strided_slice", "cos"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
+    } else if (pattern_name == "pim.memory_optimized_pad") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.pad", "cos"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
+    } else if (pattern_name == "pim.memory_optimized_concat") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"concatenate", "cos"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
     }
     LOG(FATAL) << "Unknown composite function: " << pattern_name;
     return {};
@@ -698,6 +710,10 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     decl_stream << ");";
     if (func_name == "pim_conv2d") {
       ret.decl = ConvOp(ext_func_id_, attribute_args, func_args);
+    } else if (func_name == "pim_memory_optimized") {
+      // do nothing
+      ret.decl = "";
+      return ret;
     }
     return ret;
   }

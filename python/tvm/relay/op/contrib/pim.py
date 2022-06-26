@@ -18,7 +18,7 @@
 import tvm
 from tvm import relay
 from tvm.relay import transform
-from ...dataflow_pattern import wildcard, is_op, is_constant
+from ...dataflow_pattern import is_tuple, wildcard, is_op, is_constant
 from enum import Enum
 
 class Act(Enum):
@@ -60,6 +60,26 @@ def make_conv2d_bias_act_pattern(with_bias=True, act=Act.RELU, p=6):
 
   return is_op("cos")(act_out)
 
+def make_memory_optimized_node(t):
+  data = wildcard()
+  sin_out = is_op("sin")(data)
+  opt_out = is_op(t)(sin_out)
+  return is_op("cos")(opt_out)
+
+def make_memory_optimized_node_const(t):
+  data = wildcard()
+  const = is_constant()
+  sin_out = is_op("sin")(data)
+  opt_out = is_op(t)(sin_out, const)
+  return is_op("cos")(opt_out)
+
+def make_memory_optimized_node_concat():
+  input1 = wildcard()
+  input2 = wildcard()
+  data = is_tuple([input1, input2])
+  concat_out = is_op("concatenate")(data)
+  return is_op("cos")(concat_out)
+
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
   conv2d_pat = ("pim.conv2d", make_conv2d_pattern(with_bias=False))
@@ -68,6 +88,9 @@ def partition_for_pim(mod):
   conv2d_bias_relu_pat = ("pim.conv2d_bias_relu", make_conv2d_bias_act_pattern(with_bias=True, act=Act.RELU))
   conv2d_swish_pat = ("pim.conv2d_swish", make_conv2d_bias_act_pattern(with_bias=False, act=Act.SWISH))
   conv2d_bias_swish_pat = ("pim.conv2d_bias_swish", make_conv2d_bias_act_pattern(with_bias=True, act=Act.SWISH))
+  memory_optimized_slice_pat = ("pim.memory_optimized_slice", make_memory_optimized_node("strided_slice"))
+  memory_optimized_pad_pat = ("pim.memory_optimized_pad", make_memory_optimized_node_const("nn.pad"))
+  memory_optimized_concat_pat = ("pim.memory_optimized_concat", make_memory_optimized_node_concat())
   pim_patterns = [
     conv2d_pat,
     conv2d_pat_bias,
@@ -75,6 +98,9 @@ def partition_for_pim(mod):
     conv2d_bias_relu_pat,
     conv2d_swish_pat,
     conv2d_bias_swish_pat,
+    memory_optimized_slice_pat,
+    memory_optimized_pad_pat,
+    memory_optimized_concat_pat,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
   mod = transform.AnnotateTarget(["pim"], include_non_call_ops=False)(mod)

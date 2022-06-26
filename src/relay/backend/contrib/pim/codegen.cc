@@ -428,21 +428,21 @@ public:
       gwrite.add(cmd);
     }
   }
-  void policy_basic(GWrite& gwrite, std::vector<std::string>& code) {
+  void policy_basic(GWrite& gwrite, std::vector<std::string>& code, int n, int offset=0) {
     // write GWRITE for every channels
-    for (int i = 0; i < std::min(n_channel, gwrite.n_gact()); i++) {
-      code[i] += gwrite.h();
+    for (int i = 0; i < std::min(n, gwrite.n_gact()); i++) {
+      code[i + offset] += gwrite.h();
     }
     // distrubute G_ACT
     for (int i = 0; i < gwrite.n_gact(); i++) {
-      code[i % n_channel] += gwrite.at(i).code(true);
+      code[i % n + offset] += gwrite.at(i).code(true);
     }
   }
-  std::vector<std::string> policy_basic() {
+  std::vector<std::string> policy_basic(int n) {
     std::vector<std::string> code(n_channel);
 
     for (auto& gwrite : gwrites) {
-      policy_basic(gwrite, code);
+      policy_basic(gwrite, code, n);
     }
 
     return code;
@@ -473,15 +473,34 @@ public:
           }
         }
       } else { // or fallback to basic policy
-        policy_basic(gwrite, code);
+        policy_basic(gwrite, code, n_channel);
       }
     }
 
     return code;
   }
-  std::vector<std::string> policy_gwrite() {
-    // TODO
-    return std::vector<std::string>{};
+  std::vector<std::string> policy_gwrite(int n) {
+    std::vector<std::string> code(n_channel);
+
+    for (int i = 0; i < gwrites.size(); i++) {
+      code[i % n] += gwrites[i].code(true);
+    }
+
+    return code;
+  }
+  std::vector<std::string> policy_mixed(int n_gwrite) {
+    std::vector<std::string> code(n_channel);
+    int stride = n_channel / n_gwrite;
+    int chunk =  gwrites.size() / n_gwrite;
+    for (int i = 0; i < n_gwrite; i++) {
+      int offset = i * stride;
+      for (int j = 0; j < chunk; j++) {
+        auto& gwrite = gwrites[i*chunk + j];
+        int chan = std::min(stride, gwrite.n_gact());
+        policy_basic(gwrite, code, chan, offset);
+      }
+    }
+    return code;
   }
 };
 
@@ -505,12 +524,16 @@ void PimSchedule(std::string id, const Str2StrMap& attrs,
   std::ofstream OS;
 
   // basic
-  // auto cmds = command.policy_basic();
+  // auto cmds = command.policy_basic(n_channel);
 
   // policy 1
-  auto cmds = command.policy_readres();
+  // auto cmds = command.policy_readres();
 
-  // TODO: policy 2
+  // policy 2
+  // auto cmds = command.policy_gwrite(2);
+
+  // policy mixed
+  auto cmds = command.policy_mixed(2);
 
   for (int i = 0; i < n_channel; i++) {
     OS.open(id + "-" + std::to_string(i));

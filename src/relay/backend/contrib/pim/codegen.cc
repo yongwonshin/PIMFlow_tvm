@@ -335,6 +335,10 @@ public:
     }
   }
 
+  Readres& at(int i) {
+    return readres[i];
+  }
+
   int n_readres() const {
     return readres.size();
   }
@@ -455,15 +459,17 @@ public:
         }
 
         // distribute commands
-        for (int i = 0; i < gwrite.n_gact(); i++) {
+        for (int i = 0, idx = 0; i < gwrite.n_gact(); i++) {
           GAct& gact = gwrite.at(i);
-          // write G_ACT for every channels
-          for (int j = 0; j < std::min(n_channel, gact.n_readres()); j++) {
-            code[i] += gact.h();
-          }
           // distribute readres
-          for (int j = 0; j < gact.n_readres(); j++) {
-            code[i % n_channel] += gact.code(false);
+          int stride = std::min(
+            std::max(gwrite.n_gact() * gact.n_readres() / n_channel, 1),
+            gact.n_readres());
+          for (int j = 0; j < gact.n_readres(); j += stride, idx++) {
+            code[idx % n_channel] += gact.h();
+            for (int k = 0; k < stride; k++) {
+              code[idx % n_channel] += gact.at(j + k).code();
+            }
           }
         }
       } else { // or fallback to basic policy
@@ -481,7 +487,7 @@ public:
 
 void PimSchedule(std::string id, const Str2StrMap& attrs,
                  const std::vector<std::string>& func_args, std::string code) {
-  int n_channel = 12;
+  int n_channel = 16;
 
   std::vector<std::string> traces;
   std::string token;
@@ -499,17 +505,19 @@ void PimSchedule(std::string id, const Str2StrMap& attrs,
   std::ofstream OS;
 
   // basic
-  auto cmds = command.policy_basic();
+  // auto cmds = command.policy_basic();
+
+  // policy 1
+  auto cmds = command.policy_readres();
+
+  // TODO: policy 2
+
   for (int i = 0; i < n_channel; i++) {
     OS.open(id + "-" + std::to_string(i));
     OS << cmds[i];
     OS.flush();
     OS.close();
   }
-
-  // TODO: policy 1
-
-  // TODO: policy 2
 
   OS.open(id + "-all");
   for (auto trace : traces) {

@@ -80,6 +80,10 @@ def make_memory_optimized_node_concat():
   concat_out = is_op("concatenate")(data)
   return is_op("cos")(concat_out)
 
+def make_layout_transform():
+  data = wildcard()
+  return is_op("layout_transform")(data)
+
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
   conv2d_pat = ("pim.conv2d", make_conv2d_pattern(with_bias=False))
@@ -91,6 +95,7 @@ def partition_for_pim(mod):
   memory_optimized_slice_pat = ("pim.memory_optimized_slice", make_memory_optimized_node("strided_slice"))
   memory_optimized_pad_pat = ("pim.memory_optimized_pad", make_memory_optimized_node_const("nn.pad"))
   memory_optimized_concat_pat = ("pim.memory_optimized_concat", make_memory_optimized_node_concat())
+  memory_layout_transform_pat = ("pim.layout_transform", make_layout_transform())
   pim_patterns = [
     conv2d_pat,
     conv2d_pat_bias,
@@ -101,6 +106,7 @@ def partition_for_pim(mod):
     memory_optimized_slice_pat,
     memory_optimized_pad_pat,
     memory_optimized_concat_pat,
+    memory_layout_transform_pat,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
   mod = transform.AnnotateTarget(["pim"], include_non_call_ops=False)(mod)

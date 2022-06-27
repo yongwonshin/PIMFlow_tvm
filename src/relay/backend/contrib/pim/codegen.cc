@@ -668,6 +668,10 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"concatenate", "cos"});
       return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
                           {});
+    } else if (pattern_name == "pim.layout_transform") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"layout_transform"});
+      return GenerateBody(opt_call, "pim_layout_transform", GetArgumentNames(caller),
+                          {});
     }
     LOG(FATAL) << "Unknown composite function: " << pattern_name;
     return {};
@@ -710,7 +714,7 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     decl_stream << ");";
     if (func_name == "pim_conv2d") {
       ret.decl = ConvOp(ext_func_id_, attribute_args, func_args);
-    } else if (func_name == "pim_memory_optimized") {
+    } else if (func_name == "pim_memory_optimized" || func_name == "pim_layout_transform") {
       // do nothing
       ret.decl = "";
       return ret;

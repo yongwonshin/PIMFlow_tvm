@@ -141,6 +141,9 @@ void FindAlgo(int format, int dims, int groups, const int pad[], const int strid
   }
 
   ret[0] = best_algo;
+
+  // XXX[ywshin]: fix convolution algo
+  ret[0] = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 }
 
 TVM_REGISTER_GLOBAL("tvm.contrib.cudnn.conv2d.forward")

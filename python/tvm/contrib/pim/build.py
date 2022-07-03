@@ -1,7 +1,7 @@
 import tvm
 from tvm import runtime, relay
 
-def build_pim_kernels(lib, sm, tmp_dir="./tmp", lib_path="compile.so"):
+def build_pim_kernels(lib, tmp_dir="./tmp", lib_path="compile.so"):
   """Compile PIM kernels in lib and return the runtime module ready to run.
     Parameters
     ----------

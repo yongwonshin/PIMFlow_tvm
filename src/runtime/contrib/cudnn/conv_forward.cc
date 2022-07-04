@@ -25,6 +25,7 @@
 #include <tvm/runtime/registry.h>
 
 #include "cudnn_utils.h"
+#include <iostream>
 
 namespace tvm {
 namespace contrib {
@@ -43,6 +44,8 @@ void ConvolutionForward(int mode, int format, int algo, int dims, int groups, co
   entry_ptr->conv_entry.device = x->device;
   // Set Algo
   entry_ptr->conv_entry.fwd_algo = static_cast<cudnnConvolutionFwdAlgo_t>(algo);
+
+  std::cerr << "YWSHIN: " << algo << std::endl;
 
   // Set workspace
   size_t workspace_size = 0;

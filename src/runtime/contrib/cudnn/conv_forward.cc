@@ -45,8 +45,6 @@ void ConvolutionForward(int mode, int format, int algo, int dims, int groups, co
   // Set Algo
   entry_ptr->conv_entry.fwd_algo = static_cast<cudnnConvolutionFwdAlgo_t>(algo);
 
-  std::cerr << "YWSHIN: " << algo << std::endl;
-
   // Set workspace
   size_t workspace_size = 0;
   CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(

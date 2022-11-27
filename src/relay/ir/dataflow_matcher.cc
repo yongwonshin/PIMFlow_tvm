@@ -26,6 +26,7 @@
 #include <tvm/relay/dataflow_matcher.h>
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
+#include <tvm/relay/attrs/nn.h>
 
 #include <stack>
 
@@ -889,6 +890,22 @@ class PatternPartitioner : protected MixedModeMutator {
         func = WithAttr(std::move(func), kv.first, kv.second);
       }
     }
+    for (auto kv : group.matched_nodes) {
+      for (size_t i = 0; i < kv.second.size(); ++i) {
+        const auto* call = kv.second[i].as<CallNode>();
+        if (call) {
+          const auto* conv2d_attrs = call->attrs.as<Conv2DAttrs>();
+          if (conv2d_attrs) {
+            func = WithAttr(std::move(func), "onnx_node_name", conv2d_attrs->onnx_node_name);
+          }
+          const auto* dense_attrs = call->attrs.as<DenseAttrs>();
+          if (dense_attrs) {
+            func = WithAttr(std::move(func), "onnx_node_name", dense_attrs->onnx_node_name);
+          }
+        }
+      }
+    }
+
     return Call(func, args);
   }
 

@@ -49,7 +49,7 @@ def schedule_conv2d_nchw(cfg, outs):
 
 @autotvm.register_topi_compute("conv2d_cudnn.cuda")
 def conv2d_cudnn(
-    cfg, data, kernel, strides, padding, dilation, groups=1, layout="NCHW", out_dtype="float32"
+    cfg, data, kernel, strides, padding, dilation, groups=1, layout="NCHW", out_dtype="float32", folded_slice=[], conv_id=0, h_dim_concat=0,
 ):
     """Compute conv2d using CuDNN library"""
     if layout == "NCHW":
@@ -116,6 +116,9 @@ def conv2d_cudnn(
         algo=cfg["algo"].val,
         conv_dtype=dtype,
         groups=groups,
+        folded_slice=folded_slice,
+        conv_id=conv_id,
+        h_dim_concat=h_dim_concat,
     )
 
 

@@ -34,10 +34,14 @@ using namespace runtime;
 
 void ConvolutionForward(int mode, int format, int algo, int dims, int groups, const int pad[],
                         const int stride[], const int dilation[], DLTensor* x, DLTensor* w,
-                        DLTensor* y, const std::string& conv_dtype) {
+                        DLTensor* y, const std::string& conv_dtype, int folded_slice_start=0, int folded_slice_end=0, int conv_id=0, int h_dim_concat=0) {
   CuDNNThreadEntry* entry_ptr = CuDNNThreadEntry::ThreadLocal();
   // Set Mode
   entry_ptr->conv_entry.mode = static_cast<cudnnConvolutionMode_t>(mode);
+  if (folded_slice_start + folded_slice_end > 0) {
+    x->shape[1] = folded_slice_end - folded_slice_start;
+  }
+  int offset = 1 * folded_slice_start * x->shape[2] * x->shape[3] * (x->dtype.bits / 8);
   SetConvDescriptors(entry_ptr, format, dims, groups, pad, stride, dilation, x->shape, w->shape,
                      y->shape, x->dtype, conv_dtype);
   // Set Device
@@ -54,7 +58,7 @@ void ConvolutionForward(int mode, int format, int algo, int dims, int groups, co
   entry_ptr->conv_entry.UpdateWorkspace(workspace_size);
   CUDNN_CALL(cudnnConvolutionForward(
       entry_ptr->handle, CuDNNDataType::GetConst<1>(entry_ptr->conv_entry.data_type),
-      entry_ptr->conv_entry.input_desc, x->data, entry_ptr->conv_entry.filter_desc, w->data,
+      entry_ptr->conv_entry.input_desc, x->data + offset, entry_ptr->conv_entry.filter_desc, w->data,
       entry_ptr->conv_entry.conv_desc, entry_ptr->conv_entry.fwd_algo,
       entry_ptr->conv_entry.workspace, workspace_size,
       CuDNNDataType::GetConst<0>(entry_ptr->conv_entry.data_type),
@@ -163,9 +167,13 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cudnn.conv2d.forward")
       DLTensor* y = args[11];
       std::string conv_dtype = args[12];
       int groups = args[13];
+      int folded_slice_start = args[14];
+      int folded_slice_end = args[15];
+      int conv_id = args[16];
+      int h_dim_concat = args[17];
 
       ConvolutionForward(mode, format, algo, 2, groups, pad_v, stride_v, dilation_v, x, w, y,
-                         conv_dtype);
+                         conv_dtype, folded_slice_start, folded_slice_end, conv_id, h_dim_concat);
     });
 
 TVM_REGISTER_GLOBAL("tvm.contrib.cudnn.conv2d+bias+act.forward")

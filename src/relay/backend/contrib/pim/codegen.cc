@@ -29,7 +29,8 @@ enum Act {
   ACT_NONE,
   ACT_RELU,
   ACT_SWISH,
-  ACT_CLIP
+  ACT_CLIP,
+  ACT_SIGMOID,
 };
 
 Str2StrMap ConvArgs(const CallNode* call, Act act) {
@@ -61,6 +62,56 @@ Str2StrMap ConvArgs(const CallNode* call, Act act) {
   args["Dw"] = std::to_string(conv2d_attr->dilation[1].as<IntImmNode>()->value);
   args["Act"] = std::to_string((int)act);
 
+  args["ONNX_NODE_NAME"] = conv2d_attr->onnx_node_name.c_str();
+  args["N_CHANNEL"] = std::to_string(16);
+  args["GW"] = std::to_string(4);
+
+  return args;
+}
+
+Str2StrMap FCArgs(const CallNode* call, Act act) {
+  Str2StrMap args;
+  const auto* dense_attr = call->attrs.as<DenseAttrs>();
+  ICHECK(dense_attr);
+
+  auto ishape = GetShape(call->args[0]->checked_type());
+  auto wshape = GetShape(call->args[1]->checked_type());
+
+  ICHECK_EQ(ishape[0], 1);
+  ICHECK_EQ(ishape[1], wshape[1]);
+
+  args["ROW"] = std::to_string(wshape[0]);
+  args["COL"] = std::to_string(wshape[1]);
+  args["Act"] = std::to_string((int)act);
+
+  args["ONNX_NODE_NAME"] = dense_attr->onnx_node_name.c_str();
+  args["N_CHANNEL"] = std::to_string(16);
+  args["GW"] = std::to_string(4);
+
+  return args;
+}
+
+Str2StrMap ConvFCArgs(const CallNode* call, Act act) {
+  Str2StrMap args;
+  const auto* conv2d_attr = call->attrs.as<Conv2DAttrs>();
+  ICHECK(conv2d_attr);
+
+  auto ishape = GetShape(call->args[0]->checked_type());
+  auto wshape = GetShape(call->args[1]->checked_type());
+
+  ICHECK_EQ(ishape[0], 1);
+  ICHECK_EQ(ishape[1], 1);
+  ICHECK_EQ(ishape[2], 1);
+  ICHECK_EQ(ishape[3], wshape[3]);
+
+  args["ROW"] = std::to_string(wshape[0]);
+  args["COL"] = std::to_string(wshape[1]);
+  args["Act"] = std::to_string((int)act);
+
+  args["ONNX_NODE_NAME"] = conv2d_attr->onnx_node_name.c_str();
+  args["N_CHANNEL"] = std::to_string(16);
+  args["GW"] = std::to_string(4);
+
   return args;
 }
 
@@ -71,205 +122,54 @@ inline void CuDNNPrint(std::ostringstream& os, const std::string& stmt, int inde
   os << stmt;
 }
 
+// TODO[ywshin]: validation by value
 inline std::string CuDNNCodeGen(std::string id, const Str2StrMap& attrs,
                     const std::vector<std::string>& func_args) {
-  std::ostringstream conv_decl;
-
-  // setup
-  CuDNNPrint(conv_decl, "cudnnHandle_t cudnn;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreate(&cudnn));\n");
-
-  // input
-  // CuDNNPrint(conv_decl, "size_t input_bytes = " +  attrs.at("N") + " * " +  attrs.at("C") + " * " +  attrs.at("H") + " * " +  attrs.at("W") + " * " + "sizeof(d_type);\n");
-  // // CuDNNPrint(conv_decl, "d_type *c_input = (d_type*)malloc(input_bytes);\n");
-  // CuDNNPrint(conv_decl, "d_type *d_input{nullptr};\n");
-  // CuDNNPrint(conv_decl, "cudaMalloc(&d_input, input_bytes);\n");
-  // CuDNNPrint(conv_decl, "cudaMemcpy(d_input, " + func_args[0] + ", input_bytes, cudaMemcpyHostToDevice);\n");
-  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-
-  // kernel
-  // CuDNNPrint(conv_decl, "size_t kernel_bytes = " + attrs.at("K") + " * " + attrs.at("C") + " * " + attrs.at("R") + " * " + attrs.at("S") + " * sizeof(d_type);\n");
-  // // CuDNNPrint(conv_decl, "d_type *c_kernel = (d_type*)malloc(kernel_bytes);\n");
-  // CuDNNPrint(conv_decl, "d_type *d_kernel{nullptr};\n");
-  // CuDNNPrint(conv_decl, "cudaMalloc(&d_kernel, kernel_bytes);\n");
-  // CuDNNPrint(conv_decl, "cudaMemcpy(d_kernel, " + func_args[1] + ", kernel_bytes, cudaMemcpyHostToDevice);\n");
-  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-
-  // bias
-  // if (func_args.size() > 2) {
-  //   CuDNNPrint(conv_decl, "size_t bias_bytes = " + attrs.at("K") + " * sizeof(d_type);\n");
-  //   // CuDNNPrint(conv_decl, "d_type *c_bias = (d_type*)malloc(kernel_bytes);\n");
-  //   CuDNNPrint(conv_decl, "d_type *d_bias{nullptr};\n");
-  //   CuDNNPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
-  //   CuDNNPrint(conv_decl, "cudaMemcpy(d_bias, " + func_args[2] + ", bias_bytes, cudaMemcpyHostToDevice);\n");
-  //   CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  // } else if (std::stoi(attrs.at("Act")) != ACT_NONE) {
-  //   CuDNNPrint(conv_decl, "size_t bias_size = " + attrs.at("C") + ";\n");
-  //   CuDNNPrint(conv_decl, "size_t bias_bytes = bias_size * sizeof(d_type);\n");
-  //   CuDNNPrint(conv_decl, "d_type *c_bias = (d_type*)calloc(bias_size, sizeof(d_type));\n");
-  //   CuDNNPrint(conv_decl, "d_type *d_bias{nullptr};\n");
-  //   CuDNNPrint(conv_decl, "cudaMalloc(&d_bias, bias_bytes);\n");
-  //   CuDNNPrint(conv_decl, "cudaMemcpy(d_bias, c_bias, bias_bytes, cudaMemcpyHostToDevice);\n");
-  //   CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  // }
-
-  // descriptor
-  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t input_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,\n"
-                        "/*format=*/CUDNN_TENSOR_NHWC,\n"
-                        "/*dataType=*/DATA_TYPE,\n"
-                        "/*batch_size=*/" + attrs.at("N") + ",\n"
-                        "/*channels=*/" + attrs.at("C") + ",\n"
-                        "/*height=*/" + attrs.at("H") + ",\n"
-                        "/*width=*/" + attrs.at("W") + "));\n");
-
-  CuDNNPrint(conv_decl, "cudnnFilterDescriptor_t kernel_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,\n"
-                        "/*dataType=*/DATA_TYPE,\n"
-                        "/*format=*/CUDNN_TENSOR_NHWC,\n"
-                        "/*out_channels=*/" + attrs.at("K") + ",\n"
-                        "/*in_channels=*/" + attrs.at("C") + ",\n"
-                        "/*kernel_height=*/" + attrs.at("R") + ",\n"
-                        "/*kernel_width=*/" + attrs.at("S") + "));\n");
-
-  CuDNNPrint(conv_decl, "cudnnConvolutionDescriptor_t convolution_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,\n"
-                        "/*pad_height=*/" + attrs.at("Ph") + ",\n"
-                        "/*pad_width=*/" + attrs.at("Pw") + ",\n"
-                        "/*vertical_stride=*/" + attrs.at("Sh") + ",\n"
-                        "/*horizontal_stride=*/" + attrs.at("Sw") + ",\n"
-                        "/*dilation_height=*/" + attrs.at("Dh") + ",\n"
-                        "/*dilation_width=*/" + attrs.at("Dw") + ",\n"
-                        "/*mode=*/CUDNN_CROSS_CORRELATION,\n"
-                        "/*conputeType=*/DATA_TYPE));\n");
-
-  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t bias_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&bias_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(bias_descriptor,\n"
-                        "/*format=*/CUDNN_TENSOR_NHWC,\n"
-                        "/*dataType=*/DATA_TYPE,\n"
-                        "/*batch_size=*/1,\n"
-                        "/*channels=*/" + attrs.at("K") + ",\n"
-                        "/*height=*/1,\n"
-                        "/*width=*/1));\n");
-
-  CuDNNPrint(conv_decl, "cudnnActivationDescriptor_t activation_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateActivationDescriptor(&activation_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
-                        "CUDNN_ACTIVATION_IDENTITY,\n"
-                        "CUDNN_NOT_PROPAGATE_NAN,\n"
-                        "0));\n");
-  if (std::stoi(attrs.at("Act")) == ACT_RELU) {
-    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
-                          "CUDNN_ACTIVATION_RELU,\n"
-                          "CUDNN_NOT_PROPAGATE_NAN,\n"
-                          "0));\n");
-  } else if (std::stoi(attrs.at("Act")) == ACT_SWISH) {
-    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetActivationDescriptor(activation_descriptor,\n"
-                          "CUDNN_ACTIVATION_SWISH,\n"
-                          "CUDNN_NOT_PROPAGATE_NAN,\n"
-                          "0));\n");
-    CuDNNPrint(conv_decl, "cudnnSetActivationDescriptorSwishBeta(activation_descriptor, 1);\n");
-  }
-  if (std::stoi(attrs.at("G")) > 1)
-    CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionGroupCount(convolution_descriptor,"
-                          + attrs.at("G") + "));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetConvolutionMathType(convolution_descriptor, CUDNN_TENSOR_OP_MATH));\n");
-  CuDNNPrint(conv_decl, "int OUTPUT_BATCH_SIZE = 0, OUTPUT_CHANNELS = 0, OUTPUT_HEIGHT = 0, OUTPUT_WIDTH = 0;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnGetConvolution2dForwardOutputDim(\n"
-                        "convolution_descriptor, input_descriptor, kernel_descriptor,\n"
-                        "&OUTPUT_BATCH_SIZE, &OUTPUT_CHANNELS, &OUTPUT_HEIGHT, &OUTPUT_WIDTH));\n");
-
-  // CuDNNPrint(conv_decl, "size_t output_bytes = OUTPUT_BATCH_SIZE * OUTPUT_CHANNELS * OUTPUT_HEIGHT * OUTPUT_WIDTH * sizeof(d_type);\n");
-  // CuDNNPrint(conv_decl, "d_type *d_output{nullptr};\n");
-  // CuDNNPrint(conv_decl, "cudaMalloc(&d_output, output_bytes);\n");
-
-  CuDNNPrint(conv_decl, "cudnnTensorDescriptor_t output_descriptor;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,\n"
-                        "/*format=*/CUDNN_TENSOR_NHWC,\n"
-                        "/*dataType=*/DATA_TYPE,\n"
-                        "/*batch_size=*/OUTPUT_BATCH_SIZE,\n"
-                        "/*channels=*/OUTPUT_CHANNELS,\n"
-                        "/*height=*/OUTPUT_HEIGHT,\n"
-                        "/*width=*/OUTPUT_WIDTH));\n");
-
-  CuDNNPrint(conv_decl, "cudnnConvolutionFwdAlgoPerf_t perf;\n");
-  CuDNNPrint(conv_decl, "int algo_count = 1;\n");
-  CuDNNPrint(conv_decl, "checkCUDNN(cudnnGetConvolutionForwardAlgorithm_v7(\n"
-                      "cudnn,\n"
-                      "input_descriptor,\n"
-                      "kernel_descriptor,\n"
-                      "convolution_descriptor,\n"
-                      "output_descriptor,\n"
-                      "1,            // requestedAlgoCount\n"
-                      "&algo_count,  // returnedAlgoCount\n"
-                      "&perf));\n");
-
-  CuDNNPrint(conv_decl, "size_t workspace_bytes = 0;\n");
-  CuDNNPrint(conv_decl, "cudnnGetConvolutionForwardWorkspaceSize(\n"
-                        "cudnn, input_descriptor, kernel_descriptor, convolution_descriptor,\n"
-                        "output_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, &workspace_bytes);\n");
-  CuDNNPrint(conv_decl, "void *d_workspace{nullptr};\n"
-                      "if (workspace_bytes > 0)\n"
-                      "  cudaMalloc(&d_workspace, workspace_bytes);\n");
-
-  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  CuDNNPrint(conv_decl, "const float alpha = 1, beta = 0;\n");
-  // CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, " + func_args[0] +
-  // ", kernel_descriptor, " + func_args[1] + ", convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, out0);\n");
-  if (func_args.size() == 2 && std::stoi(attrs.at("Act")) == ACT_NONE) {
-    // CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output);\n");
-    CuDNNPrint(conv_decl, "cudnnConvolutionForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0);\n");
-  } else {
-    // CuDNNPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor, d_input, kernel_descriptor, d_kernel, convolution_descriptor, perf.algo, d_workspace, workspace_bytes, &beta, output_descriptor, d_output, bias_descriptor, d_bias, activation_descriptor, output_descriptor, d_output);\n");
-    CuDNNPrint(conv_decl, "cudnnConvolutionBiasActivationForward(cudnn, &alpha, input_descriptor," + func_args[0] + ", kernel_descriptor," + func_args[1] + ", convolution_descriptor, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, d_workspace, workspace_bytes, &beta, output_descriptor, out0, bias_descriptor," + func_args[2] + ", activation_descriptor, output_descriptor, out0);\n");
-  }
-  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  // CuDNNPrint(conv_decl, "cudaMemcpy(out0, d_output, output_bytes, cudaMemcpyDeviceToHost);\n");
-  // CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-
-  CuDNNPrint(conv_decl, "cudaFree(d_workspace);\n");
-  // CuDNNPrint(conv_decl, "cudaFree(d_input);\n");
-  // CuDNNPrint(conv_decl, "cudaFree(d_kernel);\n");
-  // CuDNNPrint(conv_decl, "cudaFree(d_output);\n");
-  CuDNNPrint(conv_decl, "cudnnDestroyTensorDescriptor(input_descriptor);\n");
-  CuDNNPrint(conv_decl, "cudnnDestroyTensorDescriptor(output_descriptor);\n");
-  CuDNNPrint(conv_decl, "cudnnDestroyFilterDescriptor(kernel_descriptor);\n");
-  CuDNNPrint(conv_decl, "cudnnDestroyConvolutionDescriptor(convolution_descriptor);\n");
-  CuDNNPrint(conv_decl, "cudnnDestroy(cudnn);\n");
-  CuDNNPrint(conv_decl, "HANDLE_ERROR(cudaDeviceSynchronize());\n");
-  return conv_decl.str();
+  return "";
 }
 
-std::string PimCodeGen(std::string id, const Str2StrMap& attrs,
+std::vector<std::string> PimCodeGen(std::string id, const Str2StrMap& attrs,
                 const std::vector<std::string>& func_args) {
+  int n_channel = std::stoi(attrs.at("N_CHANNEL"));
+  std::vector<std::string> code;
   std::ostringstream OS;
 
+  int h = std::stoi(attrs.at("H"));
+  int w = std::stoi(attrs.at("W"));
+  int kh = std::stoi(attrs.at("R"));
+  int kw = std::stoi(attrs.at("S"));
+  int ph = std::stoi(attrs.at("Ph"));
+  int pw = std::stoi(attrs.at("Pw"));
+  int stride_ = std::stoi(attrs.at("Sh"));
+
+  int H = (h - kh + 2 * ph) / stride_ + 1;
+  int W = (w - kw + 2 * pw) / stride_ + 1;
   int C_o = std::stoi(attrs.at("K"));
   int C_i = std::stoi(attrs.at("C"));
-  int H = std::stoi(attrs.at("H"));
-  int W = std::stoi(attrs.at("W"));
 
-  auto i_c = ((C_i + 15) / 16) * 16;
+  auto i_c = (((C_i * kh * kw) + 15) / 16) * 16;
   auto o_c = C_o;
-  auto row = o_c;
+  auto row = ((o_c + 15) / 16) * 16;
   int fl, stride, n, col;
 
+  // NOTE: Boundary condition is ignored (e.g., 3x3 kernel with (1, 1) padding)
   if (i_c <= 512) {
     fl = 512 / i_c;
     col = i_c * fl;
     stride = i_c;
     n = ((H * W) + fl - 1) / fl;
     for (int i = 0; i < n; i++) {
-      if (i == n - 1) {
-        col = ((H * W) - (i * fl)) * i_c;
+      pim::StrideInfo sinfo;
+      if (kh > 1 || kw > 1) {
+        sinfo.use_stride = true;
+        sinfo.num_first_elem = C_i * kh;
+        sinfo.stride = C_i * (h - kh);
+        sinfo.num_after_elem = C_i * kh;
+        sinfo.num_gwrite = 512 / (C_i * kh * kw);
       }
-      pim::OutputNewtonTraceV2(OS, id, row, col, stride);
+      pim::OutputNewtonTraceV2(OS, id, row, col, stride, sinfo);
     }
+    code.push_back(OS.str());
   } else {
     int full = i_c / 512;
     col = 512;
@@ -280,20 +180,36 @@ std::string PimCodeGen(std::string id, const Str2StrMap& attrs,
         pim::OutputNewtonTraceV2(OS, id, row, col, stride);
       }
     }
+    code.push_back(OS.str());
+    OS.str("");
+    OS.clear();
     int i_c_remain = i_c - (512 * full);
     if (i_c_remain > 0) {
+      i_c_remain = ((i_c_remain + 15) / 16) * 16;
       fl = 512 / i_c_remain;
       col = fl * i_c_remain;
       stride = i_c_remain;
       n = (((H * W) + fl - 1) / fl);
       for (int i = 0; i < n; i++) {
-        if (i == n - 1) {
-          col = ((H * W) - (i * fl)) * i_c_remain;
-        }
         pim::OutputNewtonTraceV2(OS, id, row, col, stride);
       }
     }
+    code.push_back(OS.str());
   }
+  return code;
+}
+
+std::string PimCodeGenFC(std::string id, const Str2StrMap& attrs,
+                const std::vector<std::string>& func_args) {
+  int n_channel = std::stoi(attrs.at("N_CHANNEL"));
+  std::vector<std::string> code;
+  std::ostringstream OS;
+
+  int row = std::stoi(attrs.at("ROW"));
+  int col = std::stoi(attrs.at("COL"));
+
+  pim::OutputNewtonTrace(OS, id, row, col);
+
   return OS.str();
 }
 
@@ -311,6 +227,16 @@ public:
       code += h + "\n";
     }
     return code;
+  }
+
+  int n_comp() {
+    if (head.size() == 0)
+      return 0;
+    return head.size() - 1;
+  }
+
+  std::string at(int i) {
+    return head[i];
   }
 };
 
@@ -362,6 +288,25 @@ public:
       code += r.code();
     }
     return code;
+  }
+  void split(int factor) {
+    std::vector<Readres> new_readres;
+    for (int i = 0, offset = 0; i < n_readres(); i++, offset++) {
+      Readres& rr = readres[i];
+      int chunk = rr.n_comp() / factor;
+      for (int j = 0; j < factor; j++) {
+        std::vector<std::string> buf;
+        for (int k = 0; k < chunk; k++) {
+          if (j*chunk + k + offset >= rr.n_comp()) {
+            continue;
+          }
+          buf.push_back(rr.at(j*chunk + k + offset));
+        }
+        buf.push_back("READRES");
+        new_readres.push_back(Readres(buf));
+      }
+    }
+    readres = new_readres;
   }
 };
 
@@ -428,85 +373,107 @@ public:
       gwrite.add(cmd);
     }
   }
-  void policy_basic(GWrite& gwrite, std::vector<std::string>& code, int n, int offset=0) {
+
+  void policy_readres_auto(GWrite& gwrite, std::vector<std::string>& code, int n, int offset=0, int n_gwrite=1) {
     // write GWRITE for every channels
-    for (int i = 0; i < std::min(n, gwrite.n_gact()); i++) {
-      code[i + offset] += gwrite.h();
-    }
-    // distrubute G_ACT
-    for (int i = 0; i < gwrite.n_gact(); i++) {
-      code[i % n + offset] += gwrite.at(i).code(true);
-    }
-  }
-  std::vector<std::string> policy_basic(int n) {
-    std::vector<std::string> code(n_channel);
-
-    for (auto& gwrite : gwrites) {
-      policy_basic(gwrite, code, n);
+    for (int i = 0; i < n; i++) {
+      std::string g = gwrite.h();
+      int s = g.find("GWRITE_");
+      if (s == std::string::npos) {
+        // replace regular GWRITE with multiple version (GWRITE_2/GWRITE_4)
+        g = g.substr(0, g.find("GWRITE")) + std::string("GWRITE_") + std::to_string(n_gwrite) + g.substr(g.find("GWRITE") + 6, g.length());
+      }
+      code[i + offset] += g;
     }
 
-    return code;
-  }
-  std::vector<std::string> policy_readres() {
-    std::vector<std::string> code(n_channel);
+    // TODO: pick right gact for validation by value
+    GAct& gact = gwrite.at(0);
 
-    for (auto& gwrite : gwrites) {
-      // check for enough parallelism
-      if (gwrite.n_gact() <= n_channel / 2 && gwrite.n_readres() > n_channel / 2) {
-        // write GWRITE for every channels
-        for (int i = 0; i < std::min(n_channel, gwrite.n_readres()); i++) {
-          code[i] += gwrite.h();
+    // distribute readres
+    int parallelism = gwrite.n_gact() * gact.n_readres();
+
+    // exploit finer-grained parallelism at the expense of energy increase.
+    while (parallelism <= n / 2) {
+      int factor = n / parallelism;
+      gact.split(factor);
+      parallelism = gwrite.n_gact() * gact.n_readres();
+    }
+
+    // # READRES per G_ACT
+    int stride = std::min(
+      std::max((gwrite.n_gact() * gact.n_readres() + n - 1) / n, 1),
+      gact.n_readres());
+    int gw_n_readres = gwrite.n_gact() * gact.n_readres();
+    for (int j = 0, idx = 0; j < gw_n_readres; j += stride, idx++) {
+      code[idx % n + offset] += gact.h();
+      for (int k = 0; k < stride; k++) {
+        if (j + k >= gw_n_readres) {
+          break;
         }
-
-        // distribute commands
-        for (int i = 0, idx = 0; i < gwrite.n_gact(); i++) {
-          GAct& gact = gwrite.at(i);
-          // distribute readres
-          int stride = std::min(
-            std::max(gwrite.n_gact() * gact.n_readres() / n_channel, 1),
-            gact.n_readres());
-          for (int j = 0; j < gact.n_readres(); j += stride, idx++) {
-            code[idx % n_channel] += gact.h();
-            for (int k = 0; k < stride; k++) {
-              code[idx % n_channel] += gact.at(j + k).code();
-            }
+        auto& rr = gact.at(gact.n_readres() - 1);
+        if (j + k < gw_n_readres) {
+          // TODO: pick right rr for validation by value, considering remainder
+          // e.g., ./pim_codegen -oc 32 -ic 3 -h 113 -w 224 -kh 3 -kw 3 -ph 0 -pw 1 -stride 2 -name test12 -gw 4 -n_channel 12
+          rr = gact.at(k);
+        }
+        code[idx % n + offset] += rr.code();
+      }
+    }
+  }
+  std::vector<std::string> policy_auto(const Str2StrMap& attrs) {
+    std::vector<std::string> best_code(n_channel);
+    for (int n_gwrite = 1; n_gwrite <= std::stoi(attrs.at("GW")); n_gwrite *= 2) {
+      std::vector<std::string> code(n_channel);
+      int stride = n_channel / n_gwrite;
+      int chunk = (gwrites.size() + n_gwrite - 1) / n_gwrite;
+      for (int i = 0; i < n_gwrite; i++) {
+        int offset = i * stride;
+        for (int j = 0; j < chunk; j++) {
+          if (i * chunk + j >= gwrites.size()) {
+            break;
           }
+          auto& gwrite = gwrites[i * chunk + j];
+          // TODO: for valication by value, (stride) number of gwrites must be passed to the policy_readres_auto
+          policy_readres_auto(gwrite, code, stride, offset, n_gwrite);
         }
-      } else { // or fallback to basic policy
-        policy_basic(gwrite, code, n_channel);
+      }
+      std::string::size_type pos = 0;
+      int gact_best = 0;
+      while (true) {
+        pos = best_code[0].find("G_ACT0", pos);
+        if (pos == std::string::npos) {
+          pos = 0;
+          break;
+        }
+        ++gact_best;
+        ++pos;
+      }
+      int gact_code = 0;
+      while (true) {
+        pos = code[0].find("G_ACT0", pos);
+        if (pos == std::string::npos) {
+          pos = 0;
+          break;
+        }
+        ++gact_code;
+        ++pos;
+      }
+      if (best_code[0].size() == 0 || gact_code < gact_best || gact_code == gact_best && code[0].size() < best_code[0].size()) {
+        best_code = code;
       }
     }
-
-    return code;
-  }
-  std::vector<std::string> policy_gwrite(int n) {
-    std::vector<std::string> code(n_channel);
-
-    for (int i = 0; i < gwrites.size(); i++) {
-      code[i % n] += gwrites[i].code(true);
-    }
-
-    return code;
-  }
-  std::vector<std::string> policy_mixed(int n_gwrite) {
-    std::vector<std::string> code(n_channel);
-    int stride = n_channel / n_gwrite;
-    int chunk =  gwrites.size() / n_gwrite;
-    for (int i = 0; i < n_gwrite; i++) {
-      int offset = i * stride;
-      for (int j = 0; j < chunk; j++) {
-        auto& gwrite = gwrites[i*chunk + j];
-        int chan = std::min(stride, gwrite.n_gact());
-        policy_basic(gwrite, code, chan, offset);
-      }
-    }
-    return code;
+    return best_code;
   }
 };
 
 void PimSchedule(std::string id, const Str2StrMap& attrs,
-                 const std::vector<std::string>& func_args, std::string code) {
-  int n_channel = 16;
+                 const std::vector<std::string>& func_args, std::string code, bool append=false) {
+  int n_channel = std::stoi(attrs.at("N_CHANNEL"));
+  int gpu_channel = 32 - n_channel;
+  auto mode = std::ios_base::out;
+  if (append) {
+    mode = std::ios_base::app;
+  }
 
   std::vector<std::string> traces;
   std::string token;
@@ -523,39 +490,40 @@ void PimSchedule(std::string id, const Str2StrMap& attrs,
 
   std::ofstream OS;
 
-  // basic
-  // auto cmds = command.policy_basic(n_channel);
-
-  // policy 1
-  // auto cmds = command.policy_readres();
-
-  // policy 2
-  // auto cmds = command.policy_gwrite(2);
-
-  // policy mixed
-  auto cmds = command.policy_mixed(2);
-
-  for (int i = 0; i < n_channel; i++) {
-    OS.open(id + "-" + std::to_string(i));
-    OS << cmds[i];
-    OS.flush();
-    OS.close();
-  }
-
-  OS.open(id + "-all");
+  OS.open(id + "-all.pim", mode);
   for (auto trace : traces) {
     OS << trace << "\n";
   }
   OS.flush();
   OS.close();
+
+  std::vector<std::string> cmds = command.policy_auto(attrs);
+
+  for (int i = gpu_channel; i < gpu_channel + n_channel; i++) {
+    OS.open(id + "-" + std::to_string(i) + ".pim", mode);
+    OS << cmds[i - gpu_channel];
+    OS.flush();
+    OS.close();
+  }
 }
 
 std::string ConvOp(std::string id, const Str2StrMap& attrs,
                     const std::vector<std::string>& func_args) {
-  std::string code = CuDNNCodeGen(id, attrs, func_args);
-  std::string pim_trace = PimCodeGen(id, attrs, func_args);
-  PimSchedule(id, attrs, func_args, pim_trace);
-  return code;
+  std::string kernel_name = attrs.at("ONNX_NODE_NAME");
+  std::string cudnn_code = CuDNNCodeGen(kernel_name, attrs, func_args);
+  std::vector<std::string> pim_code = PimCodeGen(kernel_name, attrs, func_args);
+  for (int i = 0; i < pim_code.size(); i++) {
+    PimSchedule(kernel_name, attrs, {}, pim_code[i], i > 0);
+  }
+  return cudnn_code;
+}
+
+std::string FCOp(std::string id, const Str2StrMap& attrs,
+                    const std::vector<std::string>& func_args) {
+  std::string kernel_name = attrs.at("ONNX_NODE_NAME");
+  std::string pim_code = PimCodeGenFC(kernel_name, attrs, func_args);
+  PimSchedule(kernel_name, attrs, {}, pim_code);
+  return "";
 }
 
 class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public CodegenCBase {
@@ -633,45 +601,93 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     ICHECK(pattern_name.defined()) << "Only functions with composite attribute are supported.";
 
     if (pattern_name == "pim.conv2d") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.conv2d"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_NONE));
     } else if (pattern_name == "pim.conv2d_bias") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "add"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_NONE));
     } else if (pattern_name == "pim.conv2d_relu") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "relu", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "relu"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_RELU));
     } else if (pattern_name == "pim.conv2d_bias_relu") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 3, std::vector<std::string>{"nn.conv2d", "add", "nn.relu", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "nn.relu"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_RELU));
+    } else if (pattern_name == "pim.conv2d_clip") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "clip"});
+      return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_CLIP));
+    } else if (pattern_name == "pim.conv2d_bias_clip") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "clip"});
+      return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_CLIP));
     } else if (pattern_name == "pim.conv2d_swish") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "multiply", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "multiply"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_SWISH));
     } else if (pattern_name == "pim.conv2d_bias_swish") {
-      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 3, std::vector<std::string>{"nn.conv2d", "add", "multiply", "cos"});
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "multiply"});
       return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
                           ConvArgs(conv_call, ACT_SWISH));
-    } else if (pattern_name == "pim.memory_optimized_slice") {
-      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"strided_slice", "cos"});
-      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
-                          {});
-    } else if (pattern_name == "pim.memory_optimized_pad") {
-      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.pad", "cos"});
-      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
-                          {});
-    } else if (pattern_name == "pim.memory_optimized_concat") {
-      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"concatenate", "cos"});
-      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
-                          {});
-    } else if (pattern_name == "pim.layout_transform") {
-      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"layout_transform"});
-      return GenerateBody(opt_call, "pim_layout_transform", GetArgumentNames(caller),
-                          {});
+    } else if (pattern_name == "pim.conv2d_sigmoid") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "sigmoid"});
+      return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.conv2d_bias_sigmoid") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "sigmoid"});
+      return GenerateBody(conv_call, "pim_conv2d", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.conv2d_fc") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.conv2d"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_NONE));
+    } else if (pattern_name == "pim.conv2d_fc_bias") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "add"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_NONE));
+    } else if (pattern_name == "pim.conv2d_fc_relu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "relu"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_RELU));
+    } else if (pattern_name == "pim.conv2d_fc_bias_relu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "nn.relu"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_RELU));
+    } else if (pattern_name == "pim.conv2d_fc_clip") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "clip"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_CLIP));
+    } else if (pattern_name == "pim.conv2d_fc_bias_clip") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "clip"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_CLIP));
+    } else if (pattern_name == "pim.conv2d_fc_swish") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "multiply"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_SWISH));
+    } else if (pattern_name == "pim.conv2d_fc_bias_swish") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "multiply"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_SWISH));
+    } else if (pattern_name == "pim.conv2d_fc_sigmoid") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "sigmoid"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.conv2d_fc_bias_sigmoid") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "sigmoid"});
+      return GenerateBody(conv_call, "pim_conv2d_fc", GetArgumentNames(caller),
+                          ConvFCArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.nn_dense") {
+      const auto* fc_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.dense"});
+      return GenerateBody(fc_call, "pim_fc", GetArgumentNames(caller),
+                          FCArgs(fc_call, ACT_NONE));
+    } else if (pattern_name == "pim.nn_dense_bias") {
+      const auto* fc_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.dense", "add"});
+      return GenerateBody(fc_call, "pim_fc", GetArgumentNames(caller),
+                          FCArgs(fc_call, ACT_NONE));
     }
     LOG(FATAL) << "Unknown composite function: " << pattern_name;
     return {};
@@ -714,10 +730,10 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     decl_stream << ");";
     if (func_name == "pim_conv2d") {
       ret.decl = ConvOp(ext_func_id_, attribute_args, func_args);
-    } else if (func_name == "pim_memory_optimized" || func_name == "pim_layout_transform") {
-      // do nothing
-      ret.decl = "";
-      return ret;
+    } else if (func_name == "pim_conv2d_fc") {
+      ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
+    } else if (func_name == "pim_fc") {
+      ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
     }
     return ret;
   }
@@ -763,38 +779,38 @@ class PimModuleCodegen : public CSourceModuleCodegenBase {
 
   runtime::Module CreateCSourceModule(const ObjectRef& ref) override {
     // create header
-    code_stream_ << "#include <cstdint>\n";
-    code_stream_ << "#include <cstdlib>\n";
-    code_stream_ << "#include <string>\n";
-    code_stream_ << "#include <vector>\n";
-    code_stream_ << "#include <cstring>\n";
-    code_stream_ << "#include <iostream>\n";
     code_stream_ << "#include <tvm/runtime/c_runtime_api.h>\n";
     code_stream_ << "#include <tvm/runtime/packed_func.h>\n";
     code_stream_ << "#include <dlpack/dlpack.h>\n";
+    // code_stream_ << "#include <cstdint>\n";
+    // code_stream_ << "#include <cstdlib>\n";
+    // code_stream_ << "#include <string>\n";
+    // code_stream_ << "#include <vector>\n";
+    // code_stream_ << "#include <cstring>\n";
+    // code_stream_ << "#include <iostream>\n";
 
-    // cudnn header
-    code_stream_ << "#include <cudnn.h>\n";
-    code_stream_ << "#include <cuda_fp16.h>\n";
-    code_stream_ <<
-"static void HandleError(cudaError_t err, const char *file, int line) {\n"
-"  if (err != cudaSuccess) {\n"
-"    printf(\"%s in %s at line %d\\n\", cudaGetErrorString(err), file, line);\n"
-"    exit(EXIT_FAILURE);\n"
-"  }\n"
-"}\n"
-"#define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))\n"
-"#define checkCUDNN(expression) \\ \n"
-"{ \\ \n"
-"cudnnStatus_t status(expression); \\ \n"
-"if (status != CUDNN_STATUS_SUCCESS) { \\ \n"
-"  std::cerr << \"Error on line \" << __LINE__ << \": \" \\ \n"
-"            << cudnnGetErrorString(status) << std::endl; \\ \n"
-"  std::exit(EXIT_FAILURE); \\ \n"
-"} \\ \n"
-"}\n";
-    code_stream_ << "typedef float d_type;\n";
-    code_stream_ << "#define DATA_TYPE CUDNN_DATA_FLOAT\n";
+    // // cudnn header
+    // code_stream_ << "#include <cudnn.h>\n";
+    // code_stream_ << "#include <cuda_fp16.h>\n";
+    // code_stream_ <<
+    //   "static void HandleError(cudaError_t err, const char *file, int line) {\n"
+    //   "  if (err != cudaSuccess) {\n"
+    //   "    printf(\"%s in %s at line %d\\n\", cudaGetErrorString(err), file, line);\n"
+    //   "    exit(EXIT_FAILURE);\n"
+    //   "  }\n"
+    //   "}\n"
+    //   "#define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))\n"
+    //   "#define checkCUDNN(expression) \\ \n"
+    //   "{ \\ \n"
+    //   "cudnnStatus_t status(expression); \\ \n"
+    //   "if (status != CUDNN_STATUS_SUCCESS) { \\ \n"
+    //   "  std::cerr << \"Error on line \" << __LINE__ << \": \" \\ \n"
+    //   "            << cudnnGetErrorString(status) << std::endl; \\ \n"
+    //   "  std::exit(EXIT_FAILURE); \\ \n"
+    //   "} \\ \n"
+    //   "}\n";
+    // code_stream_ << "typedef float d_type;\n";
+    // code_stream_ << "#define DATA_TYPE CUDNN_DATA_FLOAT\n";
 
     ICHECK(ref->IsInstance<FunctionNode>());
     auto res = GenCudnnFunc(Downcast<Function>(ref));

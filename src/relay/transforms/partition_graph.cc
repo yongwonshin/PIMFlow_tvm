@@ -312,6 +312,7 @@ class Partitioner : public MixedModeMutator {
 
     std::string target = end_node->attrs.as<CompilerAttrs>()->compiler;
     std::string name = target + "_" + region->GetName() + "_" + std::to_string(region->GetID());
+    std::string onnx_node_name = end_node->attrs.as<CompilerAttrs>()->onnx_node_name;
 
     // Constant propagation
     if (!params_bind.empty()) {
@@ -332,6 +333,7 @@ class Partitioner : public MixedModeMutator {
     global_region_func =
         WithAttr(std::move(global_region_func), attr::kCompiler, tvm::runtime::String(target));
     global_region_func = WithAttr(std::move(global_region_func), attr::kInline, tvm::Integer(1));
+    global_region_func = WithAttr(std::move(global_region_func), "onnx_node_name", runtime::String(onnx_node_name));
 
     std::string fname = name;
     ICHECK(!module_->ContainGlobalVar(fname)) << "Global function " << fname << " already exists";

@@ -230,6 +230,9 @@ def wrap_compute_conv2d(
         out_layout = attrs.get_str("out_layout")
         out_dtype = attrs.out_dtype
         out_dtype = inputs[0].dtype if out_dtype in ("same", "") else out_dtype
+        folded_slice = attrs.folded_slice
+        conv_id = attrs.conv_id
+        h_dim_concat = attrs.h_dim_concat
         args = [inputs[0], inputs[1], strides, padding, dilation]
         if has_groups:
             args.append(attrs.groups)
@@ -240,6 +243,9 @@ def wrap_compute_conv2d(
         args.append(out_dtype)
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        args.append(folded_slice)
+        args.append(conv_id)
+        args.append(h_dim_concat)
         return [topi_compute(*args)]
 
     return _compute_conv2d

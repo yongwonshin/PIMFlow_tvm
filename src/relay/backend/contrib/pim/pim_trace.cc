@@ -30,9 +30,13 @@ std::string FillZero(std::string s, size_t n) {
   return buf;
 }
 
-void GWrite(std::ostream& OS, char* buf, int r) {
+void GWrite(std::ostream& OS, char* buf, int r, StrideInfo sinfo) {
   sprintf(buf, "%02d%02d%s%05d%06d", 0, 0, FillZero(ToBinary(r), 14).c_str(), 0, 0);
-  OS << "0x" << std::setfill('0') << std::setw(8) << std::hex << std::stoi(buf, nullptr, 2) << " GWRITE\n";
+  OS << "0x" << std::setfill('0') << std::setw(8) << std::hex << std::stoi(buf, nullptr, 2) << " GWRITE ";
+  if (sinfo.use_stride) {
+    OS << std::dec << sinfo.num_first_elem << " " << sinfo.stride << " " << sinfo.num_after_elem;
+  }
+  OS << "\n";
   OS.flush();
 }
 
@@ -82,7 +86,7 @@ void OutputNewtonTrace(std::ostream& OS, std::string kernel_name, int64_t row, i
   OS.flush();
 }
 
-void OutputNewtonTraceV2(std::ostream& OS, std::string kernel_name, int64_t row, int64_t col, int64_t stride) {
+void OutputNewtonTraceV2(std::ostream& OS, std::string kernel_name, int64_t row, int64_t col, int64_t stride, StrideInfo sinfo) {
   char buf[100]; // fixed size
 
   int num_chunks = (col + 511) / 512;
@@ -90,12 +94,12 @@ void OutputNewtonTraceV2(std::ostream& OS, std::string kernel_name, int64_t row,
 
   for (int i = 0; i < num_chunks; i++) {
     int elem = 0;
-    GWrite(OS, buf, i);
+    for (int g = 0; g < sinfo.num_gwrite; g++) {
+      GWrite(OS, buf, i, sinfo);
+      break; // TODO: allow multiple gwrites
+    }
     for (int j = 0; j < r; j++) {
       int num_act = 4;
-      if (j == r - 1 && row % 16 != 0) {
-        num_act = ((row - (row/16)*16) + 3) / 4;
-      }
       GAct(OS, buf, i, r, j, num_act);
       int bound = 32;
       if (col % 512 != 0) {

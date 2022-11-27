@@ -18,98 +18,138 @@
 import tvm
 from tvm import relay
 from tvm.relay import transform
-from ...dataflow_pattern import is_tuple, wildcard, is_op, is_constant
+from ...dataflow_pattern import wildcard, is_op, is_constant
 from enum import Enum
 
 class Act(Enum):
-  RELU = 0
-  SWISH = 1
-  CLIP = 2
+  NONE = 0
+  RELU = 1
+  SWISH = 2
+  CLIP = 3
+  SIGMOID = 4
 
-def make_conv2d_pattern(with_bias=True):
+def make_conv2d_pattern(with_bias=True, act=Act.NONE):
   data = wildcard()
   weight = wildcard()
   bias = wildcard()
-  pim_start = is_op("sin")(data)
-  conv = is_op("nn.conv2d")(pim_start, weight)
+  conv = is_op("nn.conv2d")(data, weight).has_attr({"pim": True})
   if with_bias:
     conv_out = is_op("add")(conv, bias)
   else:
     conv_out = conv
 
-  return is_op("cos")(conv_out)
-
-def make_conv2d_bias_act_pattern(with_bias=True, act=Act.RELU, p=6):
-  data = wildcard()
-  weight = wildcard()
-  bias = wildcard()
-  pim_start = is_op("sin")(data)
-  conv = is_op("nn.conv2d")(pim_start, weight)
-  if with_bias:
-    conv_out = is_op("add")(conv, bias)
-  else:
-    conv_out = conv
-
+  if act == Act.NONE:
+    act_out = conv_out
   if act == Act.RELU:
     act_out = is_op("nn.relu")(conv_out)
   elif act == Act.SWISH:
     sigmoid = is_op("sigmoid")(conv_out)
     act_out = is_op("multiply")(conv_out, sigmoid)
   elif act == Act.CLIP:
-    raise Exception("Not implemented")
+    act_out = is_op("clip")(conv_out)
+  elif act == Act.SIGMOID:
+    act_out = is_op("sigmoid")(conv_out)
 
-  return is_op("cos")(act_out)
+  return act_out
 
-def make_memory_optimized_node(t):
+def make_conv2d_fc_pattern(with_bias=True, act=Act.NONE):
   data = wildcard()
-  sin_out = is_op("sin")(data)
-  opt_out = is_op(t)(sin_out)
-  return is_op("cos")(opt_out)
+  weight = wildcard()
+  bias = wildcard()
 
-def make_memory_optimized_node_const(t):
+  fc = is_op("nn.conv2d")(data, weight).has_attr({"pim_fc": True})
+  if with_bias:
+    fc_out = is_op("add")(fc, bias)
+  else:
+    fc_out = fc
+
+  if act == Act.NONE:
+    act_out = fc_out
+  if act == Act.RELU:
+    act_out = is_op("nn.relu")(fc_out)
+  elif act == Act.SWISH:
+    sigmoid = is_op("sigmoid")(fc_out)
+    act_out = is_op("multiply")(fc_out, sigmoid)
+  elif act == Act.CLIP:
+    act_out = is_op("clip")(fc_out)
+  elif act == Act.SIGMOID:
+    act_out = is_op("sigmoid")(fc_out)
+
+  return act_out
+
+def make_nn_dense_pattern(with_bias=False):
   data = wildcard()
-  const = is_constant()
-  sin_out = is_op("sin")(data)
-  opt_out = is_op(t)(sin_out, const)
-  return is_op("cos")(opt_out)
+  weight = is_constant()
+  bias = is_constant()
+  if with_bias:
+    fc = is_op("nn.dense")(data, weight, bias).has_attr({"pim": True})
+  else:
+    fc = is_op("nn.dense")(data, weight).has_attr({"pim": True})
 
-def make_memory_optimized_node_concat():
-  input1 = wildcard()
-  input2 = wildcard()
-  data = is_tuple([input1, input2])
-  concat_out = is_op("concatenate")(data)
-  return is_op("cos")(concat_out)
-
-def make_layout_transform():
-  data = wildcard()
-  return is_op("layout_transform")(data)
+  return fc
 
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
   conv2d_pat = ("pim.conv2d", make_conv2d_pattern(with_bias=False))
-  conv2d_pat_bias = ("pim.conv2d_bias", make_conv2d_pattern(with_bias=True))
-  conv2d_relu_pat = ("pim.conv2d_relu", make_conv2d_bias_act_pattern(with_bias=False, act=Act.RELU))
-  conv2d_bias_relu_pat = ("pim.conv2d_bias_relu", make_conv2d_bias_act_pattern(with_bias=True, act=Act.RELU))
-  conv2d_swish_pat = ("pim.conv2d_swish", make_conv2d_bias_act_pattern(with_bias=False, act=Act.SWISH))
-  conv2d_bias_swish_pat = ("pim.conv2d_bias_swish", make_conv2d_bias_act_pattern(with_bias=True, act=Act.SWISH))
-  memory_optimized_slice_pat = ("pim.memory_optimized_slice", make_memory_optimized_node("strided_slice"))
-  memory_optimized_pad_pat = ("pim.memory_optimized_pad", make_memory_optimized_node_const("nn.pad"))
-  memory_optimized_concat_pat = ("pim.memory_optimized_concat", make_memory_optimized_node_concat())
-  memory_layout_transform_pat = ("pim.layout_transform", make_layout_transform())
+  conv2d_bias_pat = ("pim.conv2d_bias", make_conv2d_pattern(with_bias=True))
+  conv2d_relu_pat = ("pim.conv2d_relu", make_conv2d_pattern(with_bias=False, act=Act.RELU))
+  conv2d_bias_relu_pat = ("pim.conv2d_bias_relu", make_conv2d_pattern(with_bias=True, act=Act.RELU))
+  conv2d_clip_pat = ("pim.conv2d_clip", make_conv2d_pattern(with_bias=False, act=Act.CLIP))
+  conv2d_bias_clip_pat = ("pim.conv2d_bias_clip", make_conv2d_pattern(with_bias=True, act=Act.CLIP))
+  conv2d_swish_pat = ("pim.conv2d_swish", make_conv2d_pattern(with_bias=False, act=Act.SWISH))
+  conv2d_bias_swish_pat = ("pim.conv2d_bias_swish", make_conv2d_pattern(with_bias=True, act=Act.SWISH))
+  conv2d_sigmoid_pat = ("pim.conv2d_sigmoid", make_conv2d_pattern(with_bias=False, act=Act.SIGMOID))
+  conv2d_bias_sigmoid_pat = ("pim.conv2d_bias_sigmoid", make_conv2d_pattern(with_bias=True, act=Act.SIGMOID))
+
+  conv2d_fc_pat = ("pim.conv2d_fc", make_conv2d_fc_pattern(with_bias=False))
+  conv2d_fc_bias_pat = ("pim.conv2d_fc_bias", make_conv2d_fc_pattern(with_bias=True))
+  conv2d_fc_relu_pat = ("pim.conv2d_fc_relu", make_conv2d_fc_pattern(with_bias=False, act=Act.RELU))
+  conv2d_fc_bias_relu_pat = ("pim.conv2d_fc_bias_relu", make_conv2d_fc_pattern(with_bias=True, act=Act.RELU))
+  conv2d_fc_clip_pat = ("pim.conv2d_fc_clip", make_conv2d_fc_pattern(with_bias=False, act=Act.CLIP))
+  conv2d_fc_bias_clip_pat = ("pim.conv2d_fc_bias_clip", make_conv2d_fc_pattern(with_bias=True, act=Act.CLIP))
+  conv2d_fc_swish_pat = ("pim.conv2d_fc_swish", make_conv2d_fc_pattern(with_bias=False, act=Act.SWISH))
+  conv2d_fc_bias_swish_pat = ("pim.conv2d_fc_bias_swish", make_conv2d_fc_pattern(with_bias=True, act=Act.SWISH))
+  conv2d_fc_sigmoid_pat = ("pim.conv2d_fc_sigmoid", make_conv2d_fc_pattern(with_bias=False, act=Act.SIGMOID))
+  conv2d_fc_bias_sigmoid_pat = ("pim.conv2d_fc_bias_sigmoid", make_conv2d_fc_pattern(with_bias=True, act=Act.SIGMOID))
+
+  nn_dense_pat = ("pim.nn_dense", make_nn_dense_pattern(with_bias=False))
+  nn_dense_bias_pat = ("pim.nn_dense_bias", make_nn_dense_pattern(with_bias=True))
+
   pim_patterns = [
-    conv2d_pat,
-    conv2d_pat_bias,
-    conv2d_relu_pat,
+    # conv patterns
     conv2d_bias_relu_pat,
-    conv2d_swish_pat,
+    conv2d_bias_clip_pat,
     conv2d_bias_swish_pat,
-    memory_optimized_slice_pat,
-    memory_optimized_pad_pat,
-    memory_optimized_concat_pat,
-    memory_layout_transform_pat,
+    conv2d_bias_sigmoid_pat,
+    conv2d_relu_pat,
+    conv2d_clip_pat,
+    conv2d_swish_pat,
+    conv2d_sigmoid_pat,
+    conv2d_bias_pat,
+    conv2d_pat,
+    # conv fc patterns
+    conv2d_fc_bias_relu_pat,
+    conv2d_fc_bias_clip_pat,
+    conv2d_fc_bias_swish_pat,
+    conv2d_fc_bias_sigmoid_pat,
+    conv2d_fc_relu_pat,
+    conv2d_fc_clip_pat,
+    conv2d_fc_swish_pat,
+    conv2d_fc_sigmoid_pat,
+    conv2d_fc_bias_pat,
+    conv2d_fc_pat,
+    # fc patterns
+    nn_dense_bias_pat,
+    nn_dense_pat,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
+  print(mod)
+  print("==========[MergeComposite Finished]==========")
   mod = transform.AnnotateTarget(["pim"], include_non_call_ops=False)(mod)
-  # mod = transform.MergeCompilerRegions()(mod)
+  print(mod)
+  print("==========[AnnotateTarget Finished]==========")
+  mod = transform.MergeCompilerRegions()(mod)
   mod = transform.PartitionGraph(bind_constants=False)(mod)
+  print(mod)
+  print("==========[PartitionGraph Finished]==========")
   return mod

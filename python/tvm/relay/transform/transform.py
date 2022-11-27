@@ -301,6 +301,17 @@ def FoldConstant(fold_qnn=False):
     """
     return _ffi_api.FoldConstant(fold_qnn)
 
+def OptimizeMemory():
+    """Optimize memory operators in a Relay program.
+
+    Need to do some work in the runtime too
+
+    Returns
+    -------
+    ret : tvm.transform.Pass
+        The registered pass for memory optimization.
+    """
+    return _ffi_api.OptimizeMemory()
 
 def FuseOps(fuse_opt_level=-1):
     """Fuse operators in an expr to a larger operator according to some rules.

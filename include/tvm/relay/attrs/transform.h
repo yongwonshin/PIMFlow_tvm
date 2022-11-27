@@ -98,11 +98,15 @@ struct DynExpandDimsAttrs : public tvm::AttrsNode<DynExpandDimsAttrs> {
 /*! \brief Attributes used in concatenate operators */
 struct ConcatenateAttrs : public tvm::AttrsNode<ConcatenateAttrs> {
   int axis;
+  int conv_id;
   TVM_DECLARE_ATTRS(ConcatenateAttrs, "relay.attrs.ConcatenateAttrs") {
     TVM_ATTR_FIELD(axis)
         .describe(
             "The axis at which the input arrays are concatenated."
             "Should lie in range `[-ndim, ndim)`.")
+        .set_default(0);
+    TVM_ATTR_FIELD(conv_id)
+        .describe("Convolution ID")
         .set_default(0);
   }
 };  // struct ConcatenateAttrs

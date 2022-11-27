@@ -126,6 +126,12 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
   tvm::String out_layout;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
   DataType out_dtype;
+  Array<Integer> folded_slice;
+  int conv_id;
+  int h_dim_concat;
+  bool pim;
+  bool pim_fc;
+  tvm::String onnx_node_name;
 
   TVM_DECLARE_ATTRS(Conv2DAttrs, "relay.attrs.Conv2DAttrs") {
     TVM_ATTR_FIELD(strides)
@@ -180,6 +186,30 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
     TVM_ATTR_FIELD(out_dtype)
         .set_default(NullValue<DataType>())
         .describe("Output data type, set to explicit type under mixed precision setting");
+
+    TVM_ATTR_FIELD(folded_slice)
+        .set_default(Array<Integer>({0, 0}))
+        .describe("Folded padding that can be optimized during (cuDNN) memory allocation.");
+
+    TVM_ATTR_FIELD(conv_id)
+        .set_default(0)
+        .describe("Convolution ID for allocated memory.");
+
+    TVM_ATTR_FIELD(h_dim_concat)
+        .set_default(0)
+        .describe("Concatenated dimension of H.");
+
+    TVM_ATTR_FIELD(pim)
+        .set_default(false)
+        .describe("Is PIM node");
+
+    TVM_ATTR_FIELD(pim_fc)
+        .set_default(false)
+        .describe("Is PIM FC node");
+
+    TVM_ATTR_FIELD(onnx_node_name)
+        .set_default("")
+        .describe("ONNX node name");
   }
 };
 
@@ -1074,6 +1104,8 @@ struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
   IndexExpr units;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
   DataType out_dtype;
+  bool pim;
+  tvm::String onnx_node_name;
 
   TVM_DECLARE_ATTRS(DenseAttrs, "relay.attrs.DenseAttrs") {
     TVM_ATTR_FIELD(units).describe("Number of hidden units of the dense transformation.");
@@ -1082,6 +1114,14 @@ struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
     TVM_ATTR_FIELD(out_dtype)
         .set_default(NullValue<DataType>())
         .describe("Output data type, set to explicit type under mixed precision setting");
+
+    TVM_ATTR_FIELD(pim)
+        .set_default(false)
+        .describe("Is PIM node");
+
+    TVM_ATTR_FIELD(onnx_node_name)
+        .set_default("")
+        .describe("ONNX node name");
   }
 };
 

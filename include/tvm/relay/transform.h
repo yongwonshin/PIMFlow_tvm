@@ -118,6 +118,13 @@ TVM_DLL Pass LazyGradientInit();
 TVM_DLL Pass FoldConstant(bool fold_qnn = false);
 
 /*!
+ * \brief Remove foldable memory operators.
+ *
+ * \return The pass.
+ */
+TVM_DLL Pass OptimizeMemory();
+
+/*!
  * \brief Split function with huge number of arguments to smaller pieces.
  *
  * \return The pass.

@@ -966,6 +966,7 @@ class FuseMutator : private MixedModeMutator {
   }
 
   Expr MakeNewFunction(GraphPartitioner::Group* group, Type ret_type, Expr body) {
+    VLOG_CONTEXT << "[MakeNewFuntion]";
     // Quickly check special properties of the fused function.
     // A pass to check if the fused op contains only reshape ops.
     class CheckReshapeOnly : public ExprVisitor {
@@ -992,9 +993,38 @@ class FuseMutator : private MixedModeMutator {
       bool has_call = false;
     } visitor;
 
+    class OnnxNodeName : public ExprVisitor {
+     public:
+      void VisitExpr_(const CallNode* call) final {
+        for (auto arg : call->args) {
+          VLOG(9) << "arg: " << arg->GetTypeKey();
+          const auto* arg_call = arg.as<CallNode>();
+          if (arg_call) {
+            const auto* conv2d_attrs = arg_call->attrs.as<Conv2DAttrs>();
+            const auto* dense_attrs = arg_call->attrs.as<DenseAttrs>();
+            if (conv2d_attrs) {
+              VLOG(9) << "Conv: " << conv2d_attrs->onnx_node_name;
+              this->onnx_node_name = conv2d_attrs->onnx_node_name;
+            } else if (dense_attrs) {
+              VLOG(9) << "Dense: " << dense_attrs->onnx_node_name;
+              this->onnx_node_name = dense_attrs->onnx_node_name;
+            } else {
+              // check all possible CallNode's by recursion
+              VisitExpr_(arg_call);
+            }
+          }
+        }
+      }
+
+      std::string onnx_node_name = "";
+    } onnx_node_name_visitor;
+
+    onnx_node_name_visitor(body);
     visitor(body);
     const GroupInfo& ginfo = ginfo_[group];
     auto func = Function(ginfo.params, body, ret_type, {});
+
+    func = WithAttr(std::move(func), "onnx_node_name", tvm::String(onnx_node_name_visitor.onnx_node_name));
     func = WithAttr(std::move(func), attr::kPrimitive, tvm::Integer(visitor.has_call));
     // TODO(mbs): "reshape" cleanup.
     if (visitor.has_call && visitor.reshape_only) {

@@ -169,9 +169,10 @@ Beginning of a region that is handled by a given compiler.
                            });
 
 TVM_REGISTER_GLOBAL("relay.op.annotation._make.compiler_begin")
-    .set_body_typed([](Expr expr, String compiler) {
+    .set_body_typed([](Expr expr, String compiler, String onnx_node_name="") {
       auto attrs = make_object<CompilerAttrs>();
       attrs->compiler = compiler;
+      attrs->onnx_node_name = onnx_node_name;
       static const Op& op = Op::Get("annotation.compiler_begin");
       return Call(op, {expr}, Attrs(attrs), {});
     });
@@ -194,9 +195,10 @@ End of a region that is handled by a given compiler.
                            });
 
 TVM_REGISTER_GLOBAL("relay.op.annotation._make.compiler_end")
-    .set_body_typed([](Expr expr, String compiler) {
+    .set_body_typed([](Expr expr, String compiler, String onnx_node_name="") {
       auto attrs = make_object<CompilerAttrs>();
       attrs->compiler = compiler;
+      attrs->onnx_node_name = onnx_node_name;
       static const Op& op = Op::Get("annotation.compiler_end");
       return Call(op, {expr}, Attrs(attrs), {});
     });

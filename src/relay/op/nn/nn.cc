@@ -198,10 +198,12 @@ RELAY_REGISTER_OP("nn.matmul")
 TVM_REGISTER_NODE_TYPE(DenseAttrs);
 
 // Positional relay function to create dense operator used by frontend FFI.
-Expr MakeDense(Expr data, Expr weight, IndexExpr units, DataType out_dtype) {
+Expr MakeDense(Expr data, Expr weight, IndexExpr units, DataType out_dtype, bool pim, String onnx_node_name) {
   auto attrs = make_object<DenseAttrs>();
   attrs->units = units;
   attrs->out_dtype = out_dtype;
+  attrs->pim = pim;
+  attrs->onnx_node_name = onnx_node_name;
   static const Op& op = Op::Get("nn.dense");
   return Call(op, {data, weight}, Attrs(attrs), {});
 }

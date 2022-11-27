@@ -48,9 +48,11 @@ struct CastHintAttrs : public tvm::AttrsNode<CastHintAttrs> {
 struct CompilerAttrs : public tvm::AttrsNode<CompilerAttrs> {
   /*! \brief A 3rd party compiler for code generation. */
   std::string compiler;
+  std::string onnx_node_name;
 
   TVM_DECLARE_ATTRS(CompilerAttrs, "relay.attrs.CompilerAttrs") {
     TVM_ATTR_FIELD(compiler).describe("A 3rd party compiler used for code generation.");
+    TVM_ATTR_FIELD(onnx_node_name).describe("ONNX node name");
   }
 };
 

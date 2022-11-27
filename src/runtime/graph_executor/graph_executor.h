@@ -252,8 +252,10 @@ class TVM_DLL GraphExecutor : public ModuleNode {
       int bitmask = 0;
       std::string key, value;
       reader->BeginObject();
+      VLOG_CONTEXT << "[LoadAttrs]";
       while (reader->NextObjectItem(&key)) {
         reader->Read(&value);
+        VLOG(9) << "KEY: " << key << ", VALUE: " << value;
         if (key == "func_name") {
           param->func_name = value;
           bitmask |= 1;

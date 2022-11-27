@@ -142,6 +142,12 @@ def conv2d(
     kernel_layout="OIHW",
     out_layout="",
     out_dtype="",
+    folded_slice=[],
+    conv_id=0,
+    h_dim_concat=0,
+    pim=False,
+    pim_fc=False,
+    onnx_node_name="",
 ):
     r"""2D convolution.
 
@@ -233,6 +239,9 @@ def conv2d(
         kernel_layout,
         out_layout,
         out_dtype,
+        pim,
+        pim_fc,
+        onnx_node_name,
     )
 
 
@@ -1599,7 +1608,7 @@ def matmul(tensor_a, tensor_b, units=None, out_dtype="", transpose_a=False, tran
     return _make.matmul(tensor_a, tensor_b, units, out_dtype, transpose_a, transpose_b)
 
 
-def dense(data, weight, units=None, out_dtype=""):
+def dense(data, weight, units=None, out_dtype="", pim=False, onnx_node_name=""):
     """Dense operator.
     Applies a linear transformation
 
@@ -1629,7 +1638,7 @@ def dense(data, weight, units=None, out_dtype=""):
     result : tvm.relay.Expr
         The computed result.
     """
-    return _make.dense(data, weight, units, out_dtype)
+    return _make.dense(data, weight, units, out_dtype, pim, onnx_node_name)
 
 
 def contrib_dense_pack(data, weight, weight_layout="NC", units=None, out_dtype=""):

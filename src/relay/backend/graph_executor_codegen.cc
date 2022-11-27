@@ -452,6 +452,18 @@ class GraphExecutorCodegen : public backend::MemoizedExprTranslator<std::vector<
 
     // Compute the operator name, because we used the get unique name when generating the kernel.
     auto op_name = _GetUniqueName(func_name);
+    const auto* node_attrs = call_node->attrs.as<CallLoweredAttrs>();
+
+    VLOG_CONTEXT << "[GraphAddCallNode]";
+    VLOG(9) << "OP: " << op_name;
+    if (node_attrs) {
+      auto d = Downcast<DictAttrs>(node_attrs->metadata["relay_attrs"]);
+      for (auto p : d->dict) {
+        VLOG(9) << "KEY: " << p.first << ", VALUE: " << p.second;
+      }
+    } else {
+      VLOG(9) << " -> PASS" << std::endl;
+    }
     auto node = GraphOpNode::make_node_ptr(op_name, GraphAttrs(), func_name, inputs, attrs);
     return AddNode(node, call);
   }

@@ -541,7 +541,7 @@ def conv_backward_filter_find_algo(
     )
 
 
-def conv_forward(x, w, pad, stride, dilation, conv_mode, tensor_format, algo, conv_dtype, groups=1):
+def conv_forward(x, w, pad, stride, dilation, conv_mode, tensor_format, algo, conv_dtype, groups=1, folded_slice=[], conv_id=0, h_dim_concat=0):
     """Create an extern op that compute 2D or 3D convolution with CuDNN
 
     Parameters
@@ -635,6 +635,12 @@ def conv_forward(x, w, pad, stride, dilation, conv_mode, tensor_format, algo, co
         algo = 1
 
     if dims == 4:
+        folded_slice_start, folded_slice_end = 0, 0
+        if tensor_format == 1 and len(folded_slice) > 0:
+            dilated_ksize_y = 1 + (list(w.shape)[1] - 1) * dilation[0]
+            oshape[1] = (np.int32(folded_slice[1] - folded_slice[0]) + pad[0] - dilated_ksize_y) // stride[0] + 1
+        if len(folded_slice) > 0:
+            folded_slice_start, folded_slice_end = folded_slice
         return te.extern(
             oshape,
             [x, w],
@@ -654,6 +660,10 @@ def conv_forward(x, w, pad, stride, dilation, conv_mode, tensor_format, algo, co
                 outs[0],
                 conv_dtype,
                 groups,
+                folded_slice_start,
+                folded_slice_end,
+                conv_id,
+                h_dim_concat,
             ),
             name="y",
         )

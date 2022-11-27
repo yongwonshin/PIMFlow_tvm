@@ -347,7 +347,11 @@ bool Conv2DRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
   IndexExpr pad_h, pad_w;
   GetPaddingHeightWidth(param->padding, &pad_h, &pad_w);
   if (!dshape_nchw[2].as<tir::AnyNode>()) {
-    oshape.Set(2, indexdiv(dshape_nchw[2] + pad_h - dilated_ksize_y, param->strides[0]) + 1);
+    IndexExpr slice = dshape_nchw[2];
+    if (param->folded_slice.size() > 0) {
+      slice = param->folded_slice[1] - param->folded_slice[0];
+    }
+    oshape.Set(2, indexdiv(slice + pad_h - dilated_ksize_y, param->strides[0]) + 1);
   } else {
     oshape.Set(2, dshape_nchw[2]);
   }
@@ -371,10 +375,11 @@ TVM_REGISTER_GLOBAL("relay.op.nn._make.conv2d")
     .set_body_typed([](Expr data, Expr weight, Array<IndexExpr> strides, Array<IndexExpr> padding,
                        Array<IndexExpr> dilation, int groups, IndexExpr channels,
                        Array<IndexExpr> kernel_size, String data_layout, String kernel_layout,
-                       String out_layout, DataType out_dtype) {
-      return MakeConv<Conv2DAttrs>(data, weight, strides, padding, dilation, groups, channels,
-                                   kernel_size, data_layout, kernel_layout, out_layout, out_dtype,
-                                   "nn.conv2d");
+                       String out_layout, DataType out_dtype, bool pim_fc, bool pim, String onnx_node_name) {
+      return MakeConv2D(data, weight, strides, padding, dilation, groups, channels,
+                        kernel_size, data_layout, kernel_layout, out_layout, out_dtype, pim,
+                        pim_fc, onnx_node_name,
+                        "nn.conv2d");
     });
 
 RELAY_REGISTER_OP("nn.conv2d")

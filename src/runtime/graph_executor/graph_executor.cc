@@ -40,6 +40,16 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <queue>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <stdexcept>
+#include <array>
+#include <memory>
+#include <cstdio>
+#include <functional>
+#include <future>
 
 #include "../file_utils.h"
 
@@ -53,14 +63,187 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
 }
 }  // namespace details
 
+// [ywshin] based on https://modoocode.com/285
+class Simulator {
+  public:
+  Simulator() {
+    simulator_threads_.reserve(num_threads_);
+    for (size_t i = 0; i < num_threads_; ++i) {
+      simulator_threads_.emplace_back([this]() { this->SimulatorThread(); });
+    }
+  }
+  void SimulatorThread() {
+    while (true) {
+      std::unique_lock<std::mutex> lock(m_job_q_);
+      cv_job_q_.wait(lock, [this]() { return !this->jobs_.empty() || stop_all; });
+      if (stop_all && this->jobs_.empty()) {
+        return;
+      }
+
+      std::function<void()> job = std::move(jobs_.front());
+      jobs_.pop();
+      lock.unlock();
+
+      job();
+    }
+  }
+  template <class F, class... Args>
+  std::future<typename std::result_of<F(Args...)>::type> EnqueueJob(
+    F&& f, Args&&... args) {
+    if (stop_all) {
+      throw std::runtime_error("Stopped");
+    }
+
+    using return_type = typename std::result_of<F(Args...)>::type;
+    auto job = std::make_shared<std::packaged_task<return_type()>>(
+      std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+    std::future<return_type> job_result_future = job->get_future();
+    {
+      std::lock_guard<std::mutex> lock(m_job_q_);
+      jobs_.push([job]() { (*job)(); });
+    }
+    cv_job_q_.notify_one();
+
+    return job_result_future;
+  }
+  ~Simulator() {
+    stop_all = true;
+    cv_job_q_.notify_all();
+
+    for (auto& t : simulator_threads_) {
+      t.join();
+    }
+  }
+  static std::string exec(std::vector<std::string> names) {
+    std::string testcmd = "echo [SIMULATOR] ";
+    for (auto name : names) {
+      testcmd += " " + name;
+    }
+
+    std::array<char, 256> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(testcmd.c_str(), "r"), pclose);
+    if (!pipe) {
+      throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+      result += buffer.data();
+    }
+    return result;
+  }
+  const unsigned num_threads_ = std::thread::hardware_concurrency();
+  std::queue<std::function<void()>> jobs_;
+  std::vector<std::thread> simulator_threads_;
+  bool stop_all = false;
+  std::condition_variable cv_job_q_;
+  std::mutex m_job_q_;
+  std::vector<std::future<std::string>> futures;
+};
+
+bool is_number(const std::string& s) {
+  return !s.empty() && std::find_if(s.begin(),
+    s.end(), [](unsigned char c) { return !std::isdigit(c); }) == s.end();
+}
+
 /*!
  * \brief Run all the operations one by one.
  */
 void GraphExecutor::Run() {
+  Simulator simulator;
+
+  std::unordered_map<int, std::vector<std::string>> m;
+  for (size_t i = 0; i < op_execs_.size(); ++i) {
+    if (nodes_[i].param.attrs["onnx_node_name"].as<StringObj>()) {
+      auto onnx_node_name = std::string(Downcast<String>(nodes_[i].param.attrs["onnx_node_name"]));
+      size_t pos = onnx_node_name.find("_pim_added");
+      if (pos == std::string::npos) {
+        pos = onnx_node_name.find("_added");
+      }
+      if (pos == std::string::npos) {
+        pos = onnx_node_name.find("_offloaded");
+      }
+      if (pos != std::string::npos) {
+        for (int i = 1; ; i++) {
+          auto idx = onnx_node_name.substr(pos-i, i);
+          if (!is_number(idx)) {
+            m[std::stoi(idx.substr(1, idx.size() - 1))].push_back(onnx_node_name);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  for (auto kv : m) {
+    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, kv.second));
+  }
+
   // setup the array and requirements.
   for (size_t i = 0; i < op_execs_.size(); ++i) {
+    bool skip = false;
+    if (nodes_[i].param.attrs["onnx_node_name"].as<StringObj>()) {
+      auto onnx_node_name = std::string(Downcast<String>(nodes_[i].param.attrs["onnx_node_name"]));
+      // skip simulated noded
+      for (const auto op : {"_added", "_pim_added", "_offloaded"}) {
+        if (onnx_node_name.find(op) != std::string::npos) {
+          skip = true;
+          break;
+        }
+      }
+      if (skip) {
+        VLOG(9) << "[SKIPPED] " << nodes_[i].name;
+        continue;
+      }
+      size_t pos = 0;
+      // skip nodes to be memory-optimized
+      for (const auto op : {"tvmgen_default_fused_concatenate", "tvmgen_default_fused_nn_pad", "tvmgen_default_fused_strided_slice"}) {
+        if (nodes_[i].name.find(op) != std::string::npos) {
+          skip = true;
+          pos = strlen(op);
+          if (pos < nodes_[i].name.size() && nodes_[i].name[pos] == '_') {
+            ++pos;
+          }
+        }
+      }
+      // don't skip memory nodes that are fused with the non-memory nodes
+      while (true) {
+        auto substr = nodes_[i].name.substr(pos);
+        bool found = false;
+        for (const auto op : {"concatenate", "nn_pad", "strided_slice"}) {
+          if (substr.find(op) != std::string::npos) {
+            pos = pos + strlen(op);
+            if (pos < nodes_[i].name.size() && nodes_[i].name[pos] == '_') {
+              ++pos;
+            }
+            found = true;
+          }
+        }
+        if (!found) {
+          break;
+        }
+      }
+      if (pos < nodes_[i].name.size() && !is_number(nodes_[i].name.substr(pos))) {
+        skip = false;
+      }
+    }
+    if (skip) {
+      VLOG(9) << "[SKIPPED] " << nodes_[i].name;
+      continue;
+    }
+
     if (op_execs_[i]) op_execs_[i]();
+
+    VLOG(9) << "[RUN - node name] " << nodes_[i].name;
+    for (auto e : nodes_[i].param.attrs) {
+      VLOG(9) << "[RUN] - attr " << e.first;
+    }
   }
+  for (auto& f : simulator.futures) {
+    VLOG(9) << f.get();
+  }
+
+  VLOG(9) << "[INFO] exec size " << op_execs_.size();
+  VLOG(9) << "[INFO] node size " << nodes_.size();
 }
 
 /*!

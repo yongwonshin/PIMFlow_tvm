@@ -1148,6 +1148,8 @@ class Gemm(OnnxOpConverter):
         beta = float(attr.get("beta", 1.0))
         transA = int(attr.get("transA", 0))
         transB = int(attr.get("transB", 0))
+        pim = bool(attr.get("pim", False))
+        onnx_node_name = attr.get("onnx_node_name", "")
         # get number of channels
         channels = infer_channels(inputs[1], not transB)
         if transA:
@@ -1158,7 +1160,7 @@ class Gemm(OnnxOpConverter):
             inputs[0] = _op.nn.batch_flatten(inputs[0])
         if alpha != 1.0:
             inputs[0] *= _expr.const(alpha, dtype=dtype)
-        out = _op.nn.dense(inputs[0], inputs[1], units=channels)
+        out = _op.nn.dense(inputs[0], inputs[1], units=channels, pim=pim, onnx_node_name=onnx_node_name)
         if len(inputs) == 3:
             out = out + _expr.const(beta, dtype=dtype) * inputs[2]
         return out
@@ -5523,6 +5525,17 @@ class GraphProto:
             attr["tvm_custom"] = {}
             attr["tvm_custom"]["name"] = i_name
             attr["tvm_custom"]["num_outputs"] = len(node_output)
+
+            if op_name == "Conv":
+                attr["onnx_node_name"] = node.name
+                if node.name.endswith("_pim_added"):
+                    attr["pim"] = True
+                elif node.name.endswith("_offloaded"):
+                    attr["pim_fc"] = True
+            if op_name in ["Gemm", "MatMul"]:
+                attr["onnx_node_name"] = node.name
+                if node.name.endswith("_offloaded"):
+                    attr["pim"] = True
 
             op = self._convert_operator(op_name, inputs, attr, self.opset)
             if not isinstance(op, _expr.TupleWrapper):

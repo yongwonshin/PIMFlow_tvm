@@ -54,6 +54,28 @@ inline Expr MakeConv(Expr data, Expr weight, Array<IndexExpr> strides, Array<Ind
   const Op& op = Op::Get(op_name);
   return Call(op, {data, weight}, Attrs(attrs), {});
 }
+inline Expr MakeConv2D(Expr data, Expr weight, Array<IndexExpr> strides, Array<IndexExpr> padding,
+                       Array<IndexExpr> dilation, int groups, IndexExpr channels,
+                       Array<IndexExpr> kernel_size, std::string data_layout,
+                       std::string kernel_layout, std::string out_layout, DataType out_dtype,
+                       bool pim_fc, bool pim, std::string onnx_node_name, std::string op_name) {
+  auto attrs = make_object<Conv2DAttrs>();
+  attrs->strides = std::move(strides);
+  attrs->padding = std::move(padding);
+  attrs->dilation = std::move(dilation);
+  attrs->groups = groups;
+  attrs->channels = std::move(channels);
+  attrs->kernel_size = std::move(kernel_size);
+  attrs->data_layout = std::move(data_layout);
+  attrs->kernel_layout = std::move(kernel_layout);
+  attrs->out_layout = std::move(out_layout);
+  attrs->out_dtype = std::move(out_dtype);
+  attrs->pim = std::move(pim);
+  attrs->pim_fc = std::move(pim_fc);
+  attrs->onnx_node_name = std::move(onnx_node_name);
+  const Op& op = Op::Get(op_name);
+  return Call(op, {data, weight}, Attrs(attrs), {});
+}
 
 template <typename T>
 inline Expr MakeConvWinograd(Expr data, Expr weight, int tile_size, Array<IndexExpr> strides,

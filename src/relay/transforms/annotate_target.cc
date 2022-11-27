@@ -27,6 +27,7 @@
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/op_attr_types.h>
 #include <tvm/relay/transform.h>
+#include <tvm/relay/attrs/nn.h>
 
 #include "pass_utils.h"
 
@@ -50,6 +51,7 @@ class AnnotateTargetRewriter : public ExprRewriter {
   Array<runtime::String> targets_;
   /*! \brief Maintain the decision of the target for each op expr. */
   std::unordered_map<Expr, std::string, ObjectPtrHash, ObjectPtrEqual> op_expr_to_target_;
+  std::unordered_map<Expr, std::string, ObjectPtrHash, ObjectPtrEqual> op_expr_to_onnx_node_name_;
 
   /*!
    * \brief This function annotates a compiler end and a compiler begin to all arguments.
@@ -64,10 +66,12 @@ class AnnotateTargetRewriter : public ExprRewriter {
    * \return A pair of target and annotated argument expressions.
    */
   std::pair<std::string, Array<Expr>> AnnotateArgs(const Array<Expr>& args,
-                                                   const std::string& target = "") {
+                                                   const std::string& target = "",
+                                                   const String onnx_node_name = "") {
     std::string ref_target = "";
     Array<Expr> compiler_begins;
     Array<Expr> compiler_ends;
+    std::string onnx_node_name_ = onnx_node_name;
     for (auto arg : args) {
       std::string arg_target = default_target;
       const CallNode* call = arg.as<CallNode>();
@@ -86,15 +90,17 @@ class AnnotateTargetRewriter : public ExprRewriter {
         const CallNode* end = call->args[0].as<CallNode>();
         if (end && end->op == CompilerEndOp()) {
           arg_target = end->attrs.as<CompilerAttrs>()->compiler;
+          onnx_node_name_ = end->attrs.as<CompilerAttrs>()->onnx_node_name;
         }
       } else if (op_expr_to_target_.find(arg) != op_expr_to_target_.end()) {
         arg_target = op_expr_to_target_[arg];
+        onnx_node_name_ = op_expr_to_onnx_node_name_[arg];
         // If an argument is a call node and has no argument, then it should be tensor ops such as
         // zeros, so we treat it as input vars.
         if (call && call->args.size() == 0) {
           compiler_ends.push_back(arg);
         } else {
-          compiler_ends.push_back(InsertAnnotation(arg, arg_target, make_end_op));
+          compiler_ends.push_back(InsertAnnotation(arg, arg_target, make_end_op, onnx_node_name_));
         }
       } else {
         // Input vars.
@@ -114,7 +120,7 @@ class AnnotateTargetRewriter : public ExprRewriter {
 
     if (ref_target != "") {
       for (const auto& end : compiler_ends) {
-        compiler_begins.push_back(InsertAnnotation(end, op_target, make_begin_op));
+        compiler_begins.push_back(InsertAnnotation(end, op_target, make_begin_op, onnx_node_name));
       }
     } else {
       return {op_target, args};
@@ -122,8 +128,8 @@ class AnnotateTargetRewriter : public ExprRewriter {
     return {op_target, compiler_begins};
   }
 
-  Expr InsertAnnotation(const Expr& expr, const std::string& target, const PackedFunc* ann_op) {
-    Expr new_op = (*ann_op)(expr, target);
+  Expr InsertAnnotation(const Expr& expr, const std::string& target, const PackedFunc* ann_op, const String onnx_node_name = "") {
+    Expr new_op = (*ann_op)(expr, target, onnx_node_name);
     new_op->checked_type_ = expr->checked_type_;
     return new_op;
   }
@@ -150,16 +156,20 @@ class AnnotateTargetRewriter : public ExprRewriter {
           expr->IsInstance<RefReadNode>() || expr->IsInstance<TupleGetItemNode>() ||
           (call && !call->args.empty()) || (tup && !tup->fields.empty())) {
         std::string target = op_expr_to_target_[new_expr];
-        new_expr = InsertAnnotation(new_expr, target, make_end_op);
+        std::string onnx_node_name = op_expr_to_onnx_node_name_[new_expr];
+        new_expr = InsertAnnotation(new_expr, target, make_end_op, onnx_node_name);
         op_expr_to_target_[new_expr] = target;
+        op_expr_to_onnx_node_name_[new_expr] = onnx_node_name;
       }
     } else if (call && call->op == CompilerEndOp()) {
       if (default_target == call->attrs.as<CompilerAttrs>()->compiler) {
         ICHECK_EQ(call->args.size(), 1U);
         new_expr = call->args[0];
         std::string target = op_expr_to_target_[new_expr];
-        new_expr = InsertAnnotation(new_expr, target, make_end_op);
+        std::string onnx_node_name = op_expr_to_onnx_node_name_[new_expr];
+        new_expr = InsertAnnotation(new_expr, target, make_end_op, onnx_node_name);
         op_expr_to_target_[new_expr] = target;
+        op_expr_to_onnx_node_name_[new_expr] = onnx_node_name;
       }
     }
 
@@ -187,6 +197,7 @@ class AnnotateTargetRewriter : public ExprRewriter {
       // Already annotated. Recover target
       if (op_expr_to_target_.find(input_expr) == op_expr_to_target_.end()) {
         op_expr_to_target_[input_expr] = post.as<CallNode>()->attrs.as<CompilerAttrs>()->compiler;
+        op_expr_to_onnx_node_name_[input_expr] = post.as<CallNode>()->attrs.as<CompilerAttrs>()->onnx_node_name;
       }
       ICHECK(op_expr_to_target_.find(input_expr) != op_expr_to_target_.end());
       // Preserve annotated nodes
@@ -254,13 +265,31 @@ class AnnotateTargetRewriter : public ExprRewriter {
     std::string target = supported_targets[0];
 
     // Add annotations to each arg.
-    auto target_n_args = AnnotateArgs(post_call->args, target);
+    String onnx_node_name;
+    if (pre->attrs.defined()) {
+      VLOG_CONTEXT << "[ANNOTATE]";
+      if (pre->attrs.as<Conv2DAttrs>()) {
+        VLOG(9) << pre->attrs.as<Conv2DAttrs>()->onnx_node_name;
+        onnx_node_name = pre->attrs.as<Conv2DAttrs>()->onnx_node_name;
+      } else if (pre->attrs.as<DenseAttrs>()) {
+        VLOG(9) << pre->attrs.as<DenseAttrs>()->onnx_node_name;
+        onnx_node_name = pre->attrs.as<DenseAttrs>()->onnx_node_name;
+      }
+    }
+    if (pre->op->IsInstance<FunctionNode>()) {
+      Function func = Downcast<Function>(pre->op);
+      if (func.defined()) {
+        onnx_node_name = func->GetAttr<String>("onnx_node_name").value();
+      }
+    }
+    auto target_n_args = AnnotateArgs(post_call->args, target, onnx_node_name);
     Array<Expr> compiler_begins = std::get<1>(target_n_args);
     Call new_call = Call(post_call->op, compiler_begins, post_call->attrs);
     new_call->checked_type_ = pre->checked_type_;
 
     // Update the target map.
     op_expr_to_target_[new_call] = target;
+    op_expr_to_onnx_node_name_[new_call] = onnx_node_name;
     return std::move(new_call);
   }
 

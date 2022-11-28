@@ -782,6 +782,8 @@ class PimModuleCodegen : public CSourceModuleCodegenBase {
     code_stream_ << "#include <tvm/runtime/c_runtime_api.h>\n";
     code_stream_ << "#include <tvm/runtime/packed_func.h>\n";
     code_stream_ << "#include <dlpack/dlpack.h>\n";
+    code_stream_ << "#include <cudnn.h>\n";
+    code_stream_ << "#include <cuda_fp16.h>\n";
     // code_stream_ << "#include <cstdint>\n";
     // code_stream_ << "#include <cstdlib>\n";
     // code_stream_ << "#include <string>\n";
@@ -789,9 +791,6 @@ class PimModuleCodegen : public CSourceModuleCodegenBase {
     // code_stream_ << "#include <cstring>\n";
     // code_stream_ << "#include <iostream>\n";
 
-    // // cudnn header
-    // code_stream_ << "#include <cudnn.h>\n";
-    // code_stream_ << "#include <cuda_fp16.h>\n";
     // code_stream_ <<
     //   "static void HandleError(cudaError_t err, const char *file, int line) {\n"
     //   "  if (err != cudaSuccess) {\n"

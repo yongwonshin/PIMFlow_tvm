@@ -46,7 +46,7 @@
 # - ON: enable CUDA with cmake's auto search
 # - OFF: disable CUDA
 # - /path/to/cuda: use specific path to cuda toolkit
-set(USE_CUDA OFF)
+set(USE_CUDA ON)
 
 # Whether enable ROCM runtime
 #
@@ -133,7 +133,7 @@ set(USE_MICRO_STANDALONE_RUNTIME OFF)
 # - OFF: disable llvm, note this will disable CPU codegen
 #        which is needed for most cases
 # - /path/to/llvm-config: enable specific LLVM when multiple llvm-dev is available.
-set(USE_LLVM OFF)
+set(USE_LLVM ON)
 
 #---------------------------------------------
 # Contrib libraries
@@ -160,18 +160,8 @@ set(USE_BLAS none)
 # set(USE_MKL <path to venv or site-packages directory>) if using `pip install mkl`
 set(USE_MKL OFF)
 
-# Whether use DNNL library, aka Intel OneDNN: https://oneapi-src.github.io/oneDNN
-#
-# Now matmul/dense/conv2d supported by -libs=dnnl,
-# and more OP patterns supported in DNNL codegen(json runtime)
-#
-# choices:
-# - ON: Enable DNNL in BYOC and -libs=dnnl, by default using json runtime in DNNL codegen
-# - JSON: same as above.
-# - C_SRC: use c source runtime in DNNL codegen
-# - path/to/oneDNN：oneDNN root path
-# - OFF: Disable DNNL
-set(USE_DNNL OFF)
+# Whether use MKLDNN library, choices: ON, OFF, path to mkldnn library
+set(USE_MKLDNN OFF)
 
 # Whether use OpenMP thread pool, choices: gnu, intel
 # Note: "gnu" uses gomp library, "intel" uses iomp5 library
@@ -205,10 +195,10 @@ set(USE_EDGETPU OFF)
 # - ON: enable cuDNN with cmake's auto search in CUDA directory
 # - OFF: disable cuDNN
 # - /path/to/cudnn: use specific path to cuDNN path
-set(USE_CUDNN OFF)
+set(USE_CUDNN ON)
 
 # Whether use cuBLAS
-set(USE_CUBLAS OFF)
+set(USE_CUBLAS ON)
 
 # Whether use MIOpen
 set(USE_MIOPEN OFF)
@@ -221,6 +211,9 @@ set(USE_ROCBLAS OFF)
 
 # Whether use contrib sort
 set(USE_SORT ON)
+
+# Whether use MKL-DNN (DNNL) codegen
+set(USE_DNNL_CODEGEN OFF)
 
 # Whether to use Arm Compute Library (ACL) codegen
 # We provide 2 separate flags since we cannot build the ACL runtime on x86.
@@ -269,11 +262,6 @@ set(USE_VITIS_AI OFF)
 # Build Verilator codegen and runtime
 set(USE_VERILATOR OFF)
 
-#Whether to use CLML codegen
-set(USE_CLML OFF)
-# USE_CLML_GRAPH_EXECUTOR - CLML SDK PATH or ON or OFF
-set(USE_CLML_GRAPH_EXECUTOR OFF)
-
 # Build ANTLR parser for Relay text format
 # Possible values:
 # - ON: enable ANTLR by searching default locations (cmake find_program for antlr4 and /usr/local for jar)
@@ -282,7 +270,7 @@ set(USE_CLML_GRAPH_EXECUTOR OFF)
 set(USE_ANTLR OFF)
 
 # Whether use Relay debug mode
-set(USE_RELAY_DEBUG OFF)
+set(USE_RELAY_DEBUG ON)
 
 # Whether to build fast VTA simulator driver
 set(USE_VTA_FSIM OFF)
@@ -320,7 +308,7 @@ set(USE_HEXAGON_RPC OFF)
 set(USE_HEXAGON_ARCH "v66")
 
 # Whether to use ONNX codegen
-set(USE_TARGET_ONNX OFF)
+set(USE_TARGET_ONNX ON)
 
 # Whether enable BNNS runtime
 set(USE_BNNS OFF)
@@ -368,10 +356,10 @@ set(USE_GTEST AUTO)
 
 # Enable using CUTLASS as a BYOC backend
 # Need to have USE_CUDA=ON
-set(USE_CUTLASS OFF)
+set(USE_CUTLASS ON)
 
 # Enable to show a summary of TVM options
-set(SUMMARIZE OFF)
+set(SUMMARIZE ON)
 
 # Whether to use LibTorch as backend
 # To enable pass the path to the root libtorch (or PyTorch) directory

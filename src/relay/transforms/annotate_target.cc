@@ -279,7 +279,7 @@ class AnnotateTargetRewriter : public ExprRewriter {
     if (pre->op->IsInstance<FunctionNode>()) {
       Function func = Downcast<Function>(pre->op);
       if (func.defined()) {
-        onnx_node_name = func->GetAttr<String>("onnx_node_name").value();
+        onnx_node_name = func->GetAttr<String>("onnx_node_name", "").value();
       }
     }
     auto target_n_args = AnnotateArgs(post_call->args, target, onnx_node_name);

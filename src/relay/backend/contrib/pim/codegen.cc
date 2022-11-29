@@ -688,7 +688,12 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       const auto* fc_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.dense", "add"});
       return GenerateBody(fc_call, "pim_fc", GetArgumentNames(caller),
                           FCArgs(fc_call, ACT_NONE));
+    } else if (pattern_name == "pim.layout_transform") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"layout_transform"});
+      return GenerateBody(opt_call, "pim_layout_transform", GetArgumentNames(caller),
+                          {});
     }
+
     LOG(FATAL) << "Unknown composite function: " << pattern_name;
     return {};
   }
@@ -734,7 +739,11 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
     } else if (func_name == "pim_fc") {
       ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
+    } else if (func_name == "pim_layout_transform") {
+      // do nothing
+      ret.decl = "";
     }
+
     return ret;
   }
   /*! \brief The id of the external pim ext_func. */

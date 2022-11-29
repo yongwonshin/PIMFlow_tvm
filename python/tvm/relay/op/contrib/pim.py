@@ -88,6 +88,11 @@ def make_nn_dense_pattern(with_bias=False):
 
   return fc
 
+# TODO[ywshin]: remove the below pattern
+def make_layout_transform():
+  data = wildcard()
+  return is_op("layout_transform")(data)
+
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
   conv2d_pat = ("pim.conv2d", make_conv2d_pattern(with_bias=False))
@@ -115,6 +120,8 @@ def partition_for_pim(mod):
   nn_dense_pat = ("pim.nn_dense", make_nn_dense_pattern(with_bias=False))
   nn_dense_bias_pat = ("pim.nn_dense_bias", make_nn_dense_pattern(with_bias=True))
 
+  layout_transform_pat = ("pim.layout_transform", make_layout_transform())
+
   pim_patterns = [
     # conv patterns
     conv2d_bias_relu_pat,
@@ -141,6 +148,8 @@ def partition_for_pim(mod):
     # fc patterns
     nn_dense_bias_pat,
     nn_dense_pat,
+    # others
+    layout_transform_pat,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
   print(mod)

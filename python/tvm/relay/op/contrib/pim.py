@@ -18,7 +18,7 @@
 import tvm
 from tvm import relay
 from tvm.relay import transform
-from ...dataflow_pattern import wildcard, is_op, is_constant
+from ...dataflow_pattern import wildcard, is_op, is_constant, is_tuple
 from enum import Enum
 
 class Act(Enum):
@@ -88,10 +88,13 @@ def make_nn_dense_pattern(with_bias=False):
 
   return fc
 
-# TODO[ywshin]: remove the below pattern
-def make_layout_transform():
-  data = wildcard()
-  return is_op("layout_transform")(data)
+# TODO[ywshin]: remove the below patterns
+def make_layout_transform_pattern():
+  return is_op("layout_transform")(wildcard())
+def make_nn_pad_pattern():
+  return is_op("nn.pad")(wildcard(), wildcard())
+def make_concatenate_pattern():
+  return is_op("concatenate")(is_tuple((wildcard(), wildcard())))
 
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
@@ -120,7 +123,9 @@ def partition_for_pim(mod):
   nn_dense_pat = ("pim.nn_dense", make_nn_dense_pattern(with_bias=False))
   nn_dense_bias_pat = ("pim.nn_dense_bias", make_nn_dense_pattern(with_bias=True))
 
-  layout_transform_pat = ("pim.layout_transform", make_layout_transform())
+  layout_transform_pat = ("pim.layout_transform", make_layout_transform_pattern())
+  nn_pad_pat = ("pim.nn_pad", make_nn_pad_pattern())
+  concatenate_pat = ("pim.concatenate", make_concatenate_pattern())
 
   pim_patterns = [
     # conv patterns
@@ -150,6 +155,8 @@ def partition_for_pim(mod):
     nn_dense_pat,
     # others
     layout_transform_pat,
+    nn_pad_pat,
+    concatenate_pat,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
   print(mod)
@@ -157,7 +164,8 @@ def partition_for_pim(mod):
   mod = transform.AnnotateTarget(["pim"], include_non_call_ops=False)(mod)
   print(mod)
   print("==========[AnnotateTarget Finished]==========")
-  mod = transform.MergeCompilerRegions()(mod)
+  # TODO[ywshin]: merging regions does not preserve onnx_node_name
+  # mod = transform.MergeCompilerRegions()(mod)
   mod = transform.PartitionGraph(bind_constants=False)(mod)
   print(mod)
   print("==========[PartitionGraph Finished]==========")

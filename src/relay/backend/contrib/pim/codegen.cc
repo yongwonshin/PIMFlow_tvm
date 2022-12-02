@@ -545,31 +545,50 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     return {output};
   }
 
-  // std::vector<Output> VisitExpr_(const ConstantNode* cn) final {
-  //   Output output;
-  //   // Get const: static_cast<float*>(dnnl_0_consts[0]->data)
-  //   output.name = CreateDataReference(ext_func_id_, const_idx_);
-  //   output.dtype = "float";
+  std::vector<Output> VisitExpr_(const TupleNode* node) final {
+    std::vector<Output> outs;
+    for (auto field : node->fields) {
+      auto res = VisitExpr(field);
+      ICHECK_EQ(res.size(), 1U) << "Do not support tuple nest";
+      outs.push_back(res[0]);
+    }
+    return outs;
+  }
 
-  //   // Generate the global variable for needed ndarrays
-  //   if (const_array_name_.empty()) {
-  //     const_array_name_ = CreateNDArrayPool(ext_func_id_);
-  //     std::string checker = CreateInitChecker(ext_func_id_);
-  //     ext_func_body_.insert(ext_func_body_.begin(), checker);
-  //   }
+  std::vector<Output> VisitExpr_(const TupleGetItemNode* op) final {
+    auto res = VisitExpr(op->tuple);
+    ICHECK_GT(res.size(), static_cast<size_t>(op->index));
 
-  //   // Give the ndarray a unique name to ease the initialization of it at
-  //   // runtime.
-  //   std::string const_var_name = CreateConstVar(ext_func_id_, const_idx_);
-  //   const_vars_.push_back(const_var_name);
-  //   const_idx_++;
+    // Only keep the item we want for the child node.
+    // FIXME(@comaniac): The other items should still be requried for the primary outputs.
+    return {res[op->index]};
+  }
 
-  //   const auto* type_node = cn->checked_type().as<TensorTypeNode>();
-  //   ICHECK(type_node);
-  //   ICHECK_EQ(GetDtypeString(type_node), "float") << "Only float is supported for now.";
+  std::vector<Output> VisitExpr_(const ConstantNode* cn) final {
+    Output output;
+    // Get const: static_cast<float*>(dnnl_0_consts[0]->data)
+    output.name = CreateDataReference(ext_func_id_, const_idx_);
+    output.dtype = "float";
 
-  //   return {output};
-  // }
+    // Generate the global variable for needed ndarrays
+    if (const_array_name_.empty()) {
+      const_array_name_ = CreateNDArrayPool(ext_func_id_);
+      std::string checker = CreateInitChecker(ext_func_id_);
+      ext_func_body_.insert(ext_func_body_.begin(), checker);
+    }
+
+    // Give the ndarray a unique name to ease the initialization of it at
+    // runtime.
+    std::string const_var_name = CreateConstVar(ext_func_id_, const_idx_);
+    const_vars_.push_back(const_var_name);
+    const_idx_++;
+
+    const auto* type_node = cn->checked_type().as<TensorTypeNode>();
+    ICHECK(type_node);
+    ICHECK_EQ(GetDtypeString(type_node), "float") << "Only float is supported for now.";
+
+    return {output};
+  }
 
   std::vector<Output> VisitExpr_(const CallNode* call) final {
     const auto* func = call->op.as<FunctionNode>();
@@ -690,7 +709,15 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
                           FCArgs(fc_call, ACT_NONE));
     } else if (pattern_name == "pim.layout_transform") {
       const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"layout_transform"});
-      return GenerateBody(opt_call, "pim_layout_transform", GetArgumentNames(caller),
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
+    } else if (pattern_name == "pim.nn_pad") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.pad"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
+    } else if (pattern_name == "pim.concatenate") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"concatenate"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
                           {});
     }
 
@@ -739,7 +766,7 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
     } else if (func_name == "pim_fc") {
       ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
-    } else if (func_name == "pim_layout_transform") {
+    } else if (func_name == "pim_memory_optimized") {
       // do nothing
       ret.decl = "";
     }

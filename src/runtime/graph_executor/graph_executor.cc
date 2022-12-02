@@ -50,6 +50,10 @@
 #include <cstdio>
 #include <functional>
 #include <future>
+#include <cstdlib>
+#include <sstream>
+#include <fstream>
+#include <regex>
 
 #include "../file_utils.h"
 
@@ -67,6 +71,60 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
 class Simulator {
   public:
   Simulator() {
+    std::string use_simulator = GetEnvVar("TVM_USE_SIMULATOR");
+    if (use_simulator.size() > 0) {
+      is_active = true;
+    }
+    trace_path = GetEnvVar("TVM_TRACES_PATH");
+    network = GetEnvVar("TVM_NETWORK");
+
+    std::unordered_map<std::string, std::vector<std::string>> m_;
+    std::ifstream f1((network + "/solve_" + network + ".csv").c_str());
+    CHECK(f1.is_open());
+    std::string line;
+    while (std::getline(f1, line)) {
+      std::stringstream ss(line);
+      std::vector<std::string> out;
+      while (ss.good()) {
+        std::string substr;
+        std::getline(ss, substr, ',');
+        out.push_back(substr);
+      }
+      if (out[1] == "split") {
+        m_[out[0]] = {out[3]};
+      } else if (out[2] == "pipeline") {
+        LOG(FATAL) << "Not implemented!";
+      } else if (out[3] == "pipeline") {
+        m_[out[1]] = {out[5], out[6]};
+      } else {
+        LOG(FATAL) << line << " is malformed!";
+      }
+    }
+    f1.close();
+
+    std::ifstream f2((network + "_node_map.txt").c_str());
+    CHECK(f2.is_open());
+    while (std::getline(f2, line)) {
+      std::stringstream ss(line);
+      std::vector<std::string> out;
+      while (ss.good()) {
+        std::string substr;
+        getline(ss, substr, ',');
+        out.push_back(substr);
+      }
+      for (int i = 1; i < out.size(); i++) {
+        auto str = m_[out[0]][i - 1];
+        str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend());
+        str.erase(std::remove(str.begin(), str.end(), '\r'), str.cend());
+        node_map[out[i]] = str;
+      }
+    }
+    f2.close();
+
+    VLOG(9) << "[TVM_USE_SIMULATOR] " << use_simulator;
+    VLOG(9) << "[TVM_TRACES_PATH] " << trace_path;
+    VLOG(9) << "[TVM_NETWORK] " << network;
+
     simulator_threads_.reserve(num_threads_);
     for (size_t i = 0; i < num_threads_; ++i) {
       simulator_threads_.emplace_back([this]() { this->SimulatorThread(); });
@@ -106,6 +164,32 @@ class Simulator {
 
     return job_result_future;
   }
+  std::string GetEnvVar(const std::string key) const {
+    const char* val = getenv(key.c_str());
+    return val == NULL ? std::string("") : std::string(val);
+  }
+  std::string MakeGpuSimCmd(std::string trace_path, std::string output_file, int chan=16) {
+    std::stringstream ss;
+    ss << "export CUDA_INSTALL_PATH=/usr/local/cuda &&";
+    ss << " " << "source " << accel_sim_path << "gpu-simulator/setup_environment.sh &&";
+    ss << " " << "timeout 21600";
+    ss << " " << accel_sim_path << "gpu-simulator/bin/release/accel-sim.out";
+    ss << " " << "-trace " << pimflow_path << trace_path << "kernelslist.g";
+    ss << " " << "-config " << accel_sim_path << "gpu-simulator/configs/tested-cfgs/" << gpu << "/trace.config";
+    ss << " " << "-config " << accel_sim_path << "gpu-simulator/gpgpu-sim/configs/tested-cfgs/" << gpu << "/gpgpusim.config";
+    ss << " " << "-gpgpu_n_mem " << std::to_string(chan);
+    ss << " " << "-gpgpu_deadlock_detect 0";
+    ss << " " << "&> " << pimflow_path << output_file;
+    VLOG(9) << ss.str();
+    return ss.str();
+  }
+  std::string MakePimSimCmd(std::string kernel_name, std::string output_file) {
+    std::stringstream ss;
+    ss << "/root/PIMFlow_ramulator/ramulator /root/PIMFlow_ramulator/configs/HBM-config.cfg --mode=dram " << kernel_name << "-16.pim" << " | grep Cycle";
+    ss << " " << "&> " << pimflow_path << output_file;
+    VLOG(9) << ss.str();
+    return ss.str();
+  }
   ~Simulator() {
     stop_all = true;
     cv_job_q_.notify_all();
@@ -114,11 +198,8 @@ class Simulator {
       t.join();
     }
   }
-  static std::string exec(std::vector<std::string> names) {
-    std::string testcmd = "echo [SIMULATOR] ";
-    for (auto name : names) {
-      testcmd += " " + name;
-    }
+  static std::string exec_test(std::string name) {
+    std::string testcmd = "echo -n [SIMULATOR] " + name;
 
     std::array<char, 256> buffer;
     std::string result;
@@ -131,6 +212,33 @@ class Simulator {
     }
     return result;
   }
+  static std::string exec(std::string cmd) {
+    std::array<char, 256> buffer;
+    std::string result;
+
+    cmd = "/bin/bash -c \"" + cmd + "\"";
+
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) {
+      throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+      result += buffer.data();
+    }
+    return result;
+  }
+  std::vector<std::string> tokenize(std::string const &str, const char delim) {
+    size_t start;
+    size_t end = 0;
+
+    std::vector<std::string> out;
+    while ((start = str.find_first_not_of(delim, end)) != std::string::npos) {
+      end = str.find(delim, start);
+      out.push_back(str.substr(start, end - start));
+    }
+
+    return out;
+  }
   const unsigned num_threads_ = std::thread::hardware_concurrency();
   std::queue<std::function<void()>> jobs_;
   std::vector<std::thread> simulator_threads_;
@@ -138,6 +246,14 @@ class Simulator {
   std::condition_variable cv_job_q_;
   std::mutex m_job_q_;
   std::vector<std::future<std::string>> futures;
+  bool is_active;
+  std::string trace_path;
+  std::string network;
+  std::unordered_map<std::string, std::string> node_map;
+  const char* pimflow_path = "/root/PIMFlow/";
+  const char* accel_sim_path = "/root/PIMFlow_accel-sim-framework/";
+  const char* gpu = "SM75_RTX2060";
+  std::mutex ss_lock;
 };
 
 bool is_number(const std::string& s) {
@@ -174,8 +290,35 @@ void GraphExecutor::Run() {
     }
   }
 
+  // debug print for kernels
   for (auto kv : m) {
-    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, kv.second));
+    std::string name_;
+    for (auto name : kv.second) {
+      name_ += " " + name;
+    }
+    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec_test, name_));
+  }
+
+  if (simulator.is_active) {
+    // simulate non-target (not transformed) nodes
+    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.trace_path, simulator.trace_path + "sim.txt", 32)));
+
+    // simulate target nodes
+    for (auto kv : m) {
+      std::string pim_file = simulator.trace_path + "sim." + std::to_string(kv.first) + ".pim.txt";
+      std::string gpu_file = simulator.trace_path + "sim." + std::to_string(kv.first) + ".gpu.txt";
+      if (kv.second.size() == 1) {
+        simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
+      } else {
+        if (kv.second[0].find("pim_added") != std::string::npos) {
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.node_map[kv.second[1]] + "/", gpu_file)));
+        } else {
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.node_map[kv.second[0]] + "/", gpu_file)));
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[1], pim_file)));
+        }
+      }
+    }
   }
 
   // setup the array and requirements.
@@ -190,7 +333,7 @@ void GraphExecutor::Run() {
           break;
         }
       }
-      if (skip) {
+      if (skip && simulator.is_active) {
         VLOG(9) << "[SKIPPED] " << nodes_[i].name;
         continue;
       }
@@ -226,7 +369,7 @@ void GraphExecutor::Run() {
         skip = false;
       }
     }
-    if (skip) {
+    if (skip && simulator.is_active) {
       VLOG(9) << "[SKIPPED] " << nodes_[i].name;
       continue;
     }

@@ -72,7 +72,7 @@ class Simulator {
   public:
   Simulator() {
     std::string use_simulator = GetEnvVar("TVM_USE_SIMULATOR");
-    if (use_simulator.size() > 0) {
+    if (!use_simulator.empty()) {
       is_active = true;
     }
     trace_path = GetEnvVar("TVM_TRACES_PATH");
@@ -80,46 +80,51 @@ class Simulator {
 
     std::unordered_map<std::string, std::vector<std::string>> m_;
     std::ifstream f1((network + "/solve_" + network + ".csv").c_str());
-    CHECK(f1.is_open());
-    std::string line;
-    while (std::getline(f1, line)) {
-      std::stringstream ss(line);
-      std::vector<std::string> out;
-      while (ss.good()) {
-        std::string substr;
-        std::getline(ss, substr, ',');
-        out.push_back(substr);
+    CHECK(!is_active || f1.is_open());
+    if (f1.is_open()) {
+      std::string line;
+      while (std::getline(f1, line)) {
+        std::stringstream ss(line);
+        std::vector<std::string> out;
+        while (ss.good()) {
+          std::string substr;
+          std::getline(ss, substr, ',');
+          out.push_back(substr);
+        }
+        if (out[1] == "split") {
+          m_[out[0]] = {out[3]};
+        } else if (out[2] == "pipeline") {
+          LOG(FATAL) << "Not implemented!";
+        } else if (out[3] == "pipeline") {
+          m_[out[1]] = {out[5], out[6]};
+        } else {
+          LOG(FATAL) << line << " is malformed!";
+        }
       }
-      if (out[1] == "split") {
-        m_[out[0]] = {out[3]};
-      } else if (out[2] == "pipeline") {
-        LOG(FATAL) << "Not implemented!";
-      } else if (out[3] == "pipeline") {
-        m_[out[1]] = {out[5], out[6]};
-      } else {
-        LOG(FATAL) << line << " is malformed!";
-      }
+      f1.close();
     }
-    f1.close();
 
     std::ifstream f2((network + "_node_map.txt").c_str());
-    CHECK(f2.is_open());
-    while (std::getline(f2, line)) {
-      std::stringstream ss(line);
-      std::vector<std::string> out;
-      while (ss.good()) {
-        std::string substr;
-        getline(ss, substr, ',');
-        out.push_back(substr);
+    CHECK(!is_active || f2.is_open());
+    if (f2.is_open()) {
+      std::string line;
+      while (std::getline(f2, line)) {
+        std::stringstream ss(line);
+        std::vector<std::string> out;
+        while (ss.good()) {
+          std::string substr;
+          getline(ss, substr, ',');
+          out.push_back(substr);
+        }
+        for (int i = 1; i < out.size(); i++) {
+          auto str = m_[out[0]][i - 1];
+          str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend());
+          str.erase(std::remove(str.begin(), str.end(), '\r'), str.cend());
+          node_map[out[i]] = str;
+        }
       }
-      for (int i = 1; i < out.size(); i++) {
-        auto str = m_[out[0]][i - 1];
-        str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend());
-        str.erase(std::remove(str.begin(), str.end(), '\r'), str.cend());
-        node_map[out[i]] = str;
-      }
+      f2.close();
     }
-    f2.close();
 
     VLOG(9) << "[TVM_USE_SIMULATOR] " << use_simulator;
     VLOG(9) << "[TVM_TRACES_PATH] " << trace_path;
@@ -246,14 +251,13 @@ class Simulator {
   std::condition_variable cv_job_q_;
   std::mutex m_job_q_;
   std::vector<std::future<std::string>> futures;
-  bool is_active;
+  bool is_active = false;
   std::string trace_path;
   std::string network;
   std::unordered_map<std::string, std::string> node_map;
   const char* pimflow_path = "/root/PIMFlow/";
   const char* accel_sim_path = "/root/PIMFlow_accel-sim-framework/";
   const char* gpu = "SM75_RTX2060";
-  std::mutex ss_lock;
 };
 
 bool is_number(const std::string& s) {

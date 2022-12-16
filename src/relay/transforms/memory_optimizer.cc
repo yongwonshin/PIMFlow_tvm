@@ -59,6 +59,7 @@ ObjectPtr<Conv2DAttrs> CopyFromConv2dAttr(const Conv2DAttrs *attrs) {
   new_attr->h_dim_concat = attrs->h_dim_concat;
   new_attr->pim = attrs->pim;
   new_attr->pim_fc = attrs->pim_fc;
+  new_attr->gpu = attrs->gpu;
   new_attr->onnx_node_name = attrs->onnx_node_name;
   return new_attr;
 }

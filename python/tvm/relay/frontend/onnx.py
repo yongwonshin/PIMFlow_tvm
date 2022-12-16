@@ -5532,6 +5532,8 @@ class GraphProto:
                     attr["pim"] = True
                 elif node.name.endswith("_offloaded"):
                     attr["pim_fc"] = True
+                elif node.name.endswith("_added"):
+                    attr["gpu"] = True
             if op_name in ["Gemm", "MatMul"]:
                 attr["onnx_node_name"] = node.name
                 if node.name.endswith("_offloaded"):

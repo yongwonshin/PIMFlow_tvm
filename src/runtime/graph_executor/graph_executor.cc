@@ -305,7 +305,11 @@ void GraphExecutor::Run() {
 
   if (simulator.is_active) {
     // simulate non-target (not transformed) nodes
-    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.trace_path, simulator.trace_path + "sim.txt", 32)));
+    int chan = 16;
+    if (simulator.trace_path.find("-org") != std::string::npos) {
+      chan = 32;
+    }
+    simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.trace_path, simulator.trace_path + "sim.txt", chan)));
 
     // simulate target nodes
     for (auto kv : m) {

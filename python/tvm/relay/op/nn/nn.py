@@ -147,6 +147,7 @@ def conv2d(
     h_dim_concat=0,
     pim=False,
     pim_fc=False,
+    gpu=False,
     onnx_node_name="",
 ):
     r"""2D convolution.
@@ -241,6 +242,7 @@ def conv2d(
         out_dtype,
         pim,
         pim_fc,
+        gpu,
         onnx_node_name,
     )
 

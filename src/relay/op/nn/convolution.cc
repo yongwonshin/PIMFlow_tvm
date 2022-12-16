@@ -375,10 +375,10 @@ TVM_REGISTER_GLOBAL("relay.op.nn._make.conv2d")
     .set_body_typed([](Expr data, Expr weight, Array<IndexExpr> strides, Array<IndexExpr> padding,
                        Array<IndexExpr> dilation, int groups, IndexExpr channels,
                        Array<IndexExpr> kernel_size, String data_layout, String kernel_layout,
-                       String out_layout, DataType out_dtype, bool pim_fc, bool pim, String onnx_node_name) {
+                       String out_layout, DataType out_dtype, bool pim, bool pim_fc, bool gpu, String onnx_node_name) {
       return MakeConv2D(data, weight, strides, padding, dilation, groups, channels,
                         kernel_size, data_layout, kernel_layout, out_layout, out_dtype, pim,
-                        pim_fc, onnx_node_name,
+                        pim_fc, gpu, onnx_node_name,
                         "nn.conv2d");
     });
 

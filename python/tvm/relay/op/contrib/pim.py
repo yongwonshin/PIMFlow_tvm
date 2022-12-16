@@ -52,6 +52,30 @@ def make_conv2d_pattern(with_bias=True, act=Act.NONE):
 
   return act_out
 
+def make_conv2d_pattern_gpu(with_bias=True, act=Act.NONE):
+  data = wildcard()
+  weight = wildcard()
+  bias = wildcard()
+  conv = is_op("nn.conv2d")(data, weight).has_attr({"gpu": True})
+  if with_bias:
+    conv_out = is_op("add")(conv, bias)
+  else:
+    conv_out = conv
+
+  if act == Act.NONE:
+    act_out = conv_out
+  if act == Act.RELU:
+    act_out = is_op("nn.relu")(conv_out)
+  elif act == Act.SWISH:
+    sigmoid = is_op("sigmoid")(conv_out)
+    act_out = is_op("multiply")(conv_out, sigmoid)
+  elif act == Act.CLIP:
+    act_out = is_op("clip")(conv_out)
+  elif act == Act.SIGMOID:
+    act_out = is_op("sigmoid")(conv_out)
+
+  return act_out
+
 def make_conv2d_fc_pattern(with_bias=True, act=Act.NONE):
   data = wildcard()
   weight = wildcard()
@@ -88,6 +112,17 @@ def make_nn_dense_pattern(with_bias=False):
 
   return fc
 
+def make_nn_dense_pattern_gpu(with_bias=False):
+  data = wildcard()
+  weight = is_constant()
+  bias = is_constant()
+  if with_bias:
+    fc = is_op("nn.dense")(data, weight, bias).has_attr({"gpu": True})
+  else:
+    fc = is_op("nn.dense")(data, weight).has_attr({"gpu": True})
+
+  return fc
+
 # TODO[ywshin]: remove the below patterns
 def make_layout_transform_pattern():
   return is_op("layout_transform")(wildcard())
@@ -95,9 +130,12 @@ def make_nn_pad_pattern():
   return is_op("nn.pad")(wildcard(), wildcard())
 def make_concatenate_pattern():
   return is_op("concatenate")(is_tuple((wildcard(), wildcard())))
+def make_strided_slice_pattern():
+  return is_op("strided_slice")(wildcard())
 
 def partition_for_pim(mod):
   """Partition the input module into PIM-supported subgraphs."""
+  # conv
   conv2d_pat = ("pim.conv2d", make_conv2d_pattern(with_bias=False))
   conv2d_bias_pat = ("pim.conv2d_bias", make_conv2d_pattern(with_bias=True))
   conv2d_relu_pat = ("pim.conv2d_relu", make_conv2d_pattern(with_bias=False, act=Act.RELU))
@@ -109,6 +147,7 @@ def partition_for_pim(mod):
   conv2d_sigmoid_pat = ("pim.conv2d_sigmoid", make_conv2d_pattern(with_bias=False, act=Act.SIGMOID))
   conv2d_bias_sigmoid_pat = ("pim.conv2d_bias_sigmoid", make_conv2d_pattern(with_bias=True, act=Act.SIGMOID))
 
+  # conv fc
   conv2d_fc_pat = ("pim.conv2d_fc", make_conv2d_fc_pattern(with_bias=False))
   conv2d_fc_bias_pat = ("pim.conv2d_fc_bias", make_conv2d_fc_pattern(with_bias=True))
   conv2d_fc_relu_pat = ("pim.conv2d_fc_relu", make_conv2d_fc_pattern(with_bias=False, act=Act.RELU))
@@ -120,12 +159,30 @@ def partition_for_pim(mod):
   conv2d_fc_sigmoid_pat = ("pim.conv2d_fc_sigmoid", make_conv2d_fc_pattern(with_bias=False, act=Act.SIGMOID))
   conv2d_fc_bias_sigmoid_pat = ("pim.conv2d_fc_bias_sigmoid", make_conv2d_fc_pattern(with_bias=True, act=Act.SIGMOID))
 
+  # fc
   nn_dense_pat = ("pim.nn_dense", make_nn_dense_pattern(with_bias=False))
   nn_dense_bias_pat = ("pim.nn_dense_bias", make_nn_dense_pattern(with_bias=True))
 
+  # others
   layout_transform_pat = ("pim.layout_transform", make_layout_transform_pattern())
   nn_pad_pat = ("pim.nn_pad", make_nn_pad_pattern())
   concatenate_pat = ("pim.concatenate", make_concatenate_pattern())
+  strided_slice_pat = ("pim.strided_slice", make_strided_slice_pattern())
+
+  # gpu
+  conv2d_pat_gpu = ("pim.conv2d_gpu", make_conv2d_pattern_gpu(with_bias=False))
+  conv2d_bias_pat_gpu = ("pim.conv2d_bias_gpu", make_conv2d_pattern_gpu(with_bias=True))
+  conv2d_relu_pat_gpu = ("pim.conv2d_relu_gpu", make_conv2d_pattern_gpu(with_bias=False, act=Act.RELU))
+  conv2d_bias_relu_pat_gpu = ("pim.conv2d_bias_relu_gpu", make_conv2d_pattern_gpu(with_bias=True, act=Act.RELU))
+  conv2d_clip_pat_gpu = ("pim.conv2d_clip_gpu", make_conv2d_pattern_gpu(with_bias=False, act=Act.CLIP))
+  conv2d_bias_clip_pat_gpu = ("pim.conv2d_bias_clip_gpu", make_conv2d_pattern_gpu(with_bias=True, act=Act.CLIP))
+  conv2d_swish_pat_gpu = ("pim.conv2d_swish_gpu", make_conv2d_pattern_gpu(with_bias=False, act=Act.SWISH))
+  conv2d_bias_swish_pat_gpu = ("pim.conv2d_bias_swish_gpu", make_conv2d_pattern_gpu(with_bias=True, act=Act.SWISH))
+  conv2d_sigmoid_pat_gpu = ("pim.conv2d_sigmoid_gpu", make_conv2d_pattern_gpu(with_bias=False, act=Act.SIGMOID))
+  conv2d_bias_sigmoid_pat_gpu = ("pim.conv2d_bias_sigmoid_gpu", make_conv2d_pattern_gpu(with_bias=True, act=Act.SIGMOID))
+
+  nn_dense_pat_gpu = ("pim.nn_dense_gpu", make_nn_dense_pattern_gpu(with_bias=False))
+  nn_dense_bias_pat_gpu = ("pim.nn_dense_bias_gpu", make_nn_dense_pattern_gpu(with_bias=True))
 
   pim_patterns = [
     # conv patterns
@@ -157,6 +214,21 @@ def partition_for_pim(mod):
     layout_transform_pat,
     nn_pad_pat,
     concatenate_pat,
+    strided_slice_pat,
+    # gpu
+    conv2d_bias_relu_pat_gpu,
+    conv2d_bias_clip_pat_gpu,
+    conv2d_bias_swish_pat_gpu,
+    conv2d_bias_sigmoid_pat_gpu,
+    conv2d_relu_pat_gpu,
+    conv2d_clip_pat_gpu,
+    conv2d_swish_pat_gpu,
+    conv2d_sigmoid_pat_gpu,
+    conv2d_bias_pat_gpu,
+    conv2d_pat_gpu,
+
+    nn_dense_bias_pat_gpu,
+    nn_dense_pat_gpu,
   ]
   mod = transform.MergeComposite(pim_patterns)(mod)
   print(mod)

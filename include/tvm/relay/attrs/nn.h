@@ -131,6 +131,7 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
   int h_dim_concat;
   bool pim;
   bool pim_fc;
+  bool gpu;
   tvm::String onnx_node_name;
 
   TVM_DECLARE_ATTRS(Conv2DAttrs, "relay.attrs.Conv2DAttrs") {
@@ -206,6 +207,10 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
     TVM_ATTR_FIELD(pim_fc)
         .set_default(false)
         .describe("Is PIM FC node");
+
+    TVM_ATTR_FIELD(gpu)
+        .set_default(false)
+        .describe("Is GPU node");
 
     TVM_ATTR_FIELD(onnx_node_name)
         .set_default("")

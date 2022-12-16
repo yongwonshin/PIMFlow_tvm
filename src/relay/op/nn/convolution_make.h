@@ -58,7 +58,7 @@ inline Expr MakeConv2D(Expr data, Expr weight, Array<IndexExpr> strides, Array<I
                        Array<IndexExpr> dilation, int groups, IndexExpr channels,
                        Array<IndexExpr> kernel_size, std::string data_layout,
                        std::string kernel_layout, std::string out_layout, DataType out_dtype,
-                       bool pim_fc, bool pim, std::string onnx_node_name, std::string op_name) {
+                       bool pim, bool pim_fc, bool gpu, std::string onnx_node_name, std::string op_name) {
   auto attrs = make_object<Conv2DAttrs>();
   attrs->strides = std::move(strides);
   attrs->padding = std::move(padding);
@@ -72,6 +72,7 @@ inline Expr MakeConv2D(Expr data, Expr weight, Array<IndexExpr> strides, Array<I
   attrs->out_dtype = std::move(out_dtype);
   attrs->pim = std::move(pim);
   attrs->pim_fc = std::move(pim_fc);
+  attrs->gpu = std::move(gpu);
   attrs->onnx_node_name = std::move(onnx_node_name);
   const Op& op = Op::Get(op_name);
   return Call(op, {data, weight}, Attrs(attrs), {});

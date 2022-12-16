@@ -719,6 +719,58 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
       const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"concatenate"});
       return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
                           {});
+    } else if (pattern_name == "pim.strided_slice") {
+      const auto* opt_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"strided_slice"});
+      return GenerateBody(opt_call, "pim_memory_optimized", GetArgumentNames(caller),
+                          {});
+    } else if (pattern_name == "pim.conv2d_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.conv2d"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_NONE));
+    } else if (pattern_name == "pim.conv2d_bias_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "add"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_NONE));
+    } else if (pattern_name == "pim.conv2d_relu_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "relu"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_RELU));
+    } else if (pattern_name == "pim.conv2d_bias_relu_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "nn.relu"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_RELU));
+    } else if (pattern_name == "pim.conv2d_clip_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "clip"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_CLIP));
+    } else if (pattern_name == "pim.conv2d_bias_clip_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "clip"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_CLIP));
+    } else if (pattern_name == "pim.conv2d_swish_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "multiply"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SWISH));
+    } else if (pattern_name == "pim.conv2d_bias_swish_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "multiply"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SWISH));
+    } else if (pattern_name == "pim.conv2d_sigmoid_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.conv2d", "sigmoid"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.conv2d_bias_sigmoid_gpu") {
+      const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 2, std::vector<std::string>{"nn.conv2d", "add", "sigmoid"});
+      return GenerateBody(conv_call, "pim_gpu", GetArgumentNames(caller),
+                          ConvArgs(conv_call, ACT_SIGMOID));
+    } else if (pattern_name == "pim.nn_dense_gpu") {
+      const auto* fc_call = GetRootCall(callee->body.as<CallNode>(), 0, std::vector<std::string>{"nn.dense"});
+      return GenerateBody(fc_call, "pim_gpu", GetArgumentNames(caller),
+                          FCArgs(fc_call, ACT_NONE));
+    } else if (pattern_name == "pim.nn_dense_bias_gpu") {
+      const auto* fc_call = GetRootCall(callee->body.as<CallNode>(), 1, std::vector<std::string>{"nn.dense", "add"});
+      return GenerateBody(fc_call, "pim_gpu", GetArgumentNames(caller),
+                          FCArgs(fc_call, ACT_NONE));
     }
 
     LOG(FATAL) << "Unknown composite function: " << pattern_name;
@@ -767,6 +819,9 @@ class CodegenPim : public MemoizedExprTranslator<std::vector<Output>>, public Co
     } else if (func_name == "pim_fc") {
       ret.decl = FCOp(ext_func_id_, attribute_args, func_args);
     } else if (func_name == "pim_memory_optimized") {
+      // do nothing
+      ret.decl = "";
+    } else if (func_name == "pim_gpu") {
       // do nothing
       ret.decl = "";
     }

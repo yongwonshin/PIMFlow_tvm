@@ -190,7 +190,7 @@ class Simulator {
   }
   std::string MakePimSimCmd(std::string kernel_name, std::string output_file) {
     std::stringstream ss;
-    ss << "/root/PIMFlow_ramulator/ramulator /root/PIMFlow_ramulator/configs/HBM-config.cfg --mode=dram " << kernel_name << "-16.pim" << " | grep Cycle";
+    ss << "/root/PIMFlow_ramulator/ramulator /root/PIMFlow_ramulator/configs/GDDR6-config.cfg --mode=dram " << kernel_name << "-16.pim" << " | grep Cycle";
     ss << " " << "&> " << pimflow_path << output_file;
     VLOG(9) << ss.str();
     return ss.str();

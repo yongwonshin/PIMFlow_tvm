@@ -11,6 +11,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <cstdlib>
+#include <cstdio>
 
 #include "../../utils.h"
 #include "../codegen_c/codegen_c.h"
@@ -32,6 +34,18 @@ enum Act {
   ACT_CLIP,
   ACT_SIGMOID,
 };
+
+static std::string GetEnvVar(const std::string key) {
+  const char* val = getenv(key.c_str());
+  return val == NULL ? std::string("") : std::string(val);
+}
+
+static std::string PolicyToGW(const std::string policy) {
+  if (policy == "Newton+") {
+    return "1";
+  }
+  return "4";
+}
 
 Str2StrMap ConvArgs(const CallNode* call, Act act) {
   Str2StrMap args;
@@ -63,8 +77,10 @@ Str2StrMap ConvArgs(const CallNode* call, Act act) {
   args["Act"] = std::to_string((int)act);
 
   args["ONNX_NODE_NAME"] = conv2d_attr->onnx_node_name.c_str();
-  args["N_CHANNEL"] = std::to_string(16);
-  args["GW"] = std::to_string(4);
+  args["N_CHANNEL"] = GetEnvVar("PIMFLOW_N_CHANNEL");
+  std::string policy = GetEnvVar("PIMFLOW_POLICY");
+  args["POLICY"] = policy;
+  args["GW"] = PolicyToGW(policy);
 
   return args;
 }
@@ -85,8 +101,10 @@ Str2StrMap FCArgs(const CallNode* call, Act act) {
   args["Act"] = std::to_string((int)act);
 
   args["ONNX_NODE_NAME"] = dense_attr->onnx_node_name.c_str();
-  args["N_CHANNEL"] = std::to_string(16);
-  args["GW"] = std::to_string(4);
+  args["N_CHANNEL"] = GetEnvVar("PIMFLOW_N_CHANNEL");
+  std::string policy = GetEnvVar("PIMFLOW_POLICY");
+  args["POLICY"] = policy;
+  args["GW"] = PolicyToGW(policy);
 
   return args;
 }
@@ -109,8 +127,10 @@ Str2StrMap ConvFCArgs(const CallNode* call, Act act) {
   args["Act"] = std::to_string((int)act);
 
   args["ONNX_NODE_NAME"] = conv2d_attr->onnx_node_name.c_str();
-  args["N_CHANNEL"] = std::to_string(16);
-  args["GW"] = std::to_string(4);
+  args["N_CHANNEL"] = GetEnvVar("PIMFLOW_N_CHANNEL");
+  std::string policy = GetEnvVar("PIMFLOW_POLICY");
+  args["POLICY"] = policy;
+  args["GW"] = PolicyToGW(policy);
 
   return args;
 }
@@ -490,7 +510,7 @@ void PimSchedule(std::string id, const Str2StrMap& attrs,
 
   std::ofstream OS;
 
-  OS.open(id + "-all.pim", mode);
+  OS.open(id + "_" + attrs.at("N_CHANNEL") + "_" + attrs.at("GW") + "-all.pim", mode);
   for (auto trace : traces) {
     OS << trace << "\n";
   }
@@ -500,7 +520,7 @@ void PimSchedule(std::string id, const Str2StrMap& attrs,
   std::vector<std::string> cmds = command.policy_auto(attrs);
 
   for (int i = gpu_channel; i < gpu_channel + n_channel; i++) {
-    OS.open(id + "-" + std::to_string(i) + ".pim", mode);
+    OS.open(id + "_" + attrs.at("N_CHANNEL") + "_" + attrs.at("GW") + "-" + std::to_string(i) + ".pim", mode);
     OS << cmds[i - gpu_channel];
     OS.flush();
     OS.close();

@@ -77,10 +77,22 @@ class Simulator {
     }
     trace_path = GetEnvVar("TVM_TRACES_PATH");
     network = GetEnvVar("TVM_NETWORK");
+    policy = GetEnvVar("PIMFLOW_POLICY");
+    n_channel = GetEnvVar("PIMFLOW_N_CHANNEL");
+    n_gwrite = "4";
+    std::string postfix = "";
+    if (policy == "Newton+") {
+      n_gwrite = "1";
+      postfix = "_noopt";
+    }
+    std::string disable_gwrite_latency_hiding_ = GetEnvVar("RAMULATOR_DISABLE_GWRITE_LATENCY_HIDING");
+    if (!disable_gwrite_latency_hiding_.empty()) {
+      disable_gwrite_latency_hiding = true;
+    }
 
     std::unordered_map<std::string, std::vector<std::string>> m_;
-    std::ifstream f1((network + "/solve_" + network + ".csv").c_str());
-    CHECK(!is_active || f1.is_open());
+    std::ifstream f1((network + "/" + policy + "/" + n_gwrite + "/solve_" + network + "_" + policy + "_" + n_gwrite + postfix + ".csv").c_str());
+    CHECK(!is_active || f1.is_open() || policy == "None");
     if (f1.is_open()) {
       std::string line;
       while (std::getline(f1, line)) {
@@ -104,8 +116,8 @@ class Simulator {
       f1.close();
     }
 
-    std::ifstream f2((network + "_node_map.txt").c_str());
-    CHECK(!is_active || f2.is_open());
+    std::ifstream f2((network + "_" + n_channel + "_" + policy + "_node_map.txt").c_str());
+    CHECK(!is_active || f2.is_open() || policy == "None");
     if (f2.is_open()) {
       std::string line;
       while (std::getline(f2, line)) {
@@ -129,6 +141,9 @@ class Simulator {
     VLOG(9) << "[TVM_USE_SIMULATOR] " << use_simulator;
     VLOG(9) << "[TVM_TRACES_PATH] " << trace_path;
     VLOG(9) << "[TVM_NETWORK] " << network;
+    VLOG(9) << "[PIMFLOW_POLICY] " << policy;
+    VLOG(9) << "[PIMFLOW_N_CHANNEL] " << n_channel;
+    VLOG(9) << "[RAMULATOR_DISABLE_GWRITE_LATENCY_HIDING] " << disable_gwrite_latency_hiding_;
 
     simulator_threads_.reserve(num_threads_);
     for (size_t i = 0; i < num_threads_; ++i) {
@@ -190,7 +205,12 @@ class Simulator {
   }
   std::string MakePimSimCmd(std::string kernel_name, std::string output_file) {
     std::stringstream ss;
-    ss << "/root/PIMFlow_ramulator/ramulator /root/PIMFlow_ramulator/configs/GDDR6-config.cfg --mode=dram " << kernel_name << "-16.pim" << " | grep Cycle";
+    int chan = 32 - std::stoi(n_channel);
+    std::string prefix = "";
+    if (disable_gwrite_latency_hiding) {
+      prefix = "RAMULATOR_DISABLE_GWRITE_LATENCY_HIDING=1 ";
+    }
+    ss << prefix << "/root/PIMFlow_ramulator/ramulator /root/PIMFlow_ramulator/configs/GDDR6-config.cfg --mode=dram " << kernel_name << "_" << n_channel << "_" << n_gwrite << "-" + std::to_string(chan) + ".pim" << " | grep Cycle";
     ss << " " << "&> " << pimflow_path << output_file;
     VLOG(9) << ss.str();
     return ss.str();
@@ -254,10 +274,14 @@ class Simulator {
   bool is_active = false;
   std::string trace_path;
   std::string network;
+  std::string policy;
+  std::string n_channel;
+  std::string n_gwrite;
   std::unordered_map<std::string, std::string> node_map;
   const char* pimflow_path = "/root/PIMFlow/";
   const char* accel_sim_path = "/root/PIMFlow_accel-sim-framework/";
   const char* gpu = "SM75_RTX2060";
+  bool disable_gwrite_latency_hiding = false;
 };
 
 bool is_number(const std::string& s) {
@@ -305,7 +329,7 @@ void GraphExecutor::Run() {
 
   if (simulator.is_active) {
     // simulate non-target (not transformed) nodes
-    int chan = 16;
+    int chan = std::stoi(simulator.n_channel);
     if (simulator.trace_path.find("-org") != std::string::npos) {
       chan = 32;
     }

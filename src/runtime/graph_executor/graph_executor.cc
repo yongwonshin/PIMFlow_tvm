@@ -106,7 +106,13 @@ class Simulator {
         if (out[1] == "split") {
           m_[out[0]] = {out[3]};
         } else if (out[2] == "pipeline") {
-          LOG(FATAL) << "Not implemented!";
+          if (std::stoi(out[3]) == 1) {
+            m_[out[1]] = {out[4], out[5]};
+          } else if (std::stoi(out[3]) == 2) {
+            m_[out[0]] = {out[4], out[5]};
+          } else {
+            LOG(FATAL) << line << " is malformed!";
+          }
         } else if (out[3] == "pipeline") {
           m_[out[1]] = {out[5], out[6]};
         } else {

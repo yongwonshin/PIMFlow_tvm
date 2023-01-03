@@ -350,9 +350,9 @@ void GraphExecutor::Run() {
       } else {
         if (kv.second[0].find("pim_added") != std::string::npos) {
           simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
-          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.node_map[kv.second[1]] + "/", gpu_file)));
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.policy + "/4/" + simulator.node_map[kv.second[1]] + "/", gpu_file)));
         } else {
-          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.node_map[kv.second[0]] + "/", gpu_file)));
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(simulator.network + "/" + simulator.policy + "/4/" + simulator.node_map[kv.second[0]] + "/", gpu_file)));
           simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[1], pim_file)));
         }
       }

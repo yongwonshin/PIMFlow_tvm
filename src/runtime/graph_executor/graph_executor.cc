@@ -346,7 +346,11 @@ void GraphExecutor::Run() {
       std::string pim_file = simulator.trace_path + "sim." + std::to_string(kv.first) + ".pim.txt";
       std::string gpu_file = simulator.trace_path + "sim." + std::to_string(kv.first) + ".gpu.txt";
       if (kv.second.size() == 1) {
-        simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
+        if (kv.second[0].find("pim_added") != std::string::npos) {
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
+        } else {
+          simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakeGpuSimCmd(kv.second[0], gpu_file)));
+        }
       } else {
         if (kv.second[0].find("pim_added") != std::string::npos) {
           simulator.futures.emplace_back(simulator.EnqueueJob(Simulator::exec, simulator.MakePimSimCmd(kv.second[0], pim_file)));
